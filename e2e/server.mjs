@@ -150,8 +150,21 @@ const orForum = [
 function claudeText(body) {
   const last = body.messages?.[body.messages.length - 1]?.content ?? '';
   const text = typeof last === 'string' ? last : JSON.stringify(last);
-  if (text.includes('Return JSON with exactly these keys'))
+  if (text.includes('Return JSON with exactly these keys')) {
+    // per-paper fields so library screenshots look realistic; tests only check the first paper
+    const t = text.split('\n')[0];
+    const table = [
+      [/Retrieval heads/, { task: 'mechanistic interpretability', benchmarks: ['Needle-in-a-Haystack'], models: ['LLaMA-2-7B', 'Mistral-7B'], metrics: ['Retrieval score'], headlineResult: 'Fewer than 5% of heads do retrieval; masking them drops NIAH accuracy to 9%.' }],
+      [/Planning Traces/, { task: 'credit assignment for agents', benchmarks: ['WebArena', 'ToolBench'], models: ['GPT-4o agent'], metrics: ['Success rate'], headlineResult: '+8.2 points success rate on WebArena.' }],
+      [/Reward Models for Long-Horizon/, { task: 'reward modeling', benchmarks: ['WebShop', 'ALFWorld'], models: ['Trajectory RM-8B'], metrics: ['Success rate', 'AUC'], headlineResult: 'Reward model AUC 0.87 on held-out trajectories.' }],
+      [/Block-Sparse Attention/, { task: 'efficient attention kernels', benchmarks: ['RULER', 'LongBench'], models: ['Llama-3-8B'], metrics: ['Throughput', 'Accuracy'], headlineResult: '3.1x prefill speedup at 128k with under 1 point accuracy loss.' }],
+      [/Agentic Web Navigation/, { task: 'web navigation', benchmarks: ['Mind2Web', 'WebArena'], models: ['Qwen2-7B agent'], metrics: ['Step accuracy'], headlineResult: 'Curriculum plus shaping reaches 41% step accuracy.' }],
+      [/Sparse Reward Shaping/, { task: 'reward shaping', benchmarks: ['ToolBench'], models: ['Llama-3-8B agent'], metrics: ['Pass rate'], headlineResult: 'Pass rate 62% vs 48% with sparse rewards.' }],
+    ];
+    const hit = table.find(([re]) => re.test(t));
+    if (hit) return JSON.stringify(hit[1]);
     return JSON.stringify({ task: 'long-context retrieval', benchmarks: ['NeedleBench', 'LongQA'], models: ['Filtered attention', 'Full attention'], metrics: ['Recall'], headlineResult: '+11.4 recall points at 128k tokens on NeedleBench.' });
+  }
   if (text.includes('Give each cluster')) {
     const n = (text.match(/Cluster \d+/g) ?? []).length;
     return JSON.stringify(Array.from({ length: n }, (_, i) => ['Long-Context Retrieval', 'Agent Reward Design', 'Sparse Attention'][i] ?? `Topic ${i + 1}`));
