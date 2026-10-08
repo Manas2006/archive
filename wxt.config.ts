@@ -49,7 +49,7 @@ export default defineConfig({
     action: { default_title: 'Marginalia' },
     content_security_policy: {
       extension_pages:
-        "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; img-src 'self' data: blob: https://arxiv.org https://www.arxiv.org; form-action 'none'",
+        "script-src 'self'; object-src 'self'; img-src 'self' data: blob: https://arxiv.org https://www.arxiv.org; form-action 'none'",
     },
     commands: {
       'save-paper': {
