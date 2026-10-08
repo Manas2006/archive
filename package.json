@@ -1,0 +1,43 @@
+{
+  "name": "marginalia",
+  "description": "Save, annotate and organize research papers on arXiv and OpenReview.",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "wxt prepare && node scripts/copy-pdfjs.mjs",
+    "e2e": "npm run build && for t in core reader ai pages; do PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-} node e2e/test-$t.mjs || exit 1; done",
+    "fixtures": "python3 e2e/make_fixtures.py"
+  },
+  "dependencies": {
+    "approx-string-match": "^2.0.0",
+    "dexie": "^4.4.6",
+    "dompurify": "^3.4.16",
+    "fast-xml-parser": "^5.11.2",
+    "katex": "^0.19.0",
+    "marked": "^14.1.4",
+    "pdfjs-dist": "^4.10.38",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.4",
+    "@types/dompurify": "^3.0.5",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@wxt-dev/module-react": "^1.2.2",
+    "autoprefixer": "^10.6.1",
+    "fake-indexeddb": "^6.2.5",
+    "happy-dom": "^20.14.5",
+    "playwright": "^1.56.0",
+    "postcss": "^8.5.29",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3",
+    "wxt": "^0.20.27"
+  }
+}

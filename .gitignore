@@ -1,0 +1,6 @@
+node_modules
+.output
+.wxt
+e2e/certs
+*.log
+public/pdfjs

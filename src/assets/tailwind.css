@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :host, html {
+    color-scheme: light dark;
+  }
+}
+
+@layer components {
+  .mg-btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-stone-300 bg-white px-2.5 py-1 text-sm font-medium text-stone-800 shadow-sm transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 dark:hover:bg-stone-700;
+  }
+  .mg-btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-accent-700 bg-accent-600 px-2.5 py-1 text-sm font-medium text-white shadow-sm transition hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .mg-btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 disabled:opacity-50 dark:text-stone-300 dark:hover:bg-stone-800 dark:hover:text-white;
+  }
+  .mg-input {
+    @apply w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm text-stone-900 placeholder:text-stone-400 focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-200 dark:border-stone-600 dark:bg-stone-900 dark:text-stone-100 dark:focus:ring-accent-800;
+  }
+  .mg-card {
+    @apply rounded-lg border border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-900;
+  }
+  .mg-label {
+    @apply text-xs font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400;
+  }
+  .mg-chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5 text-xs text-stone-700 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200;
+  }
+}
+
+/* Markdown rendering (AI answers, notes) */
+.mg-prose { line-height: 1.55; overflow-wrap: anywhere; }
+.mg-prose > * + * { margin-top: 0.6em; }
+.mg-prose h1, .mg-prose h2, .mg-prose h3, .mg-prose h4 { font-weight: 600; margin-top: 0.9em; }
+.mg-prose h1 { font-size: 1.15em; }
+.mg-prose h2 { font-size: 1.08em; }
+.mg-prose h3, .mg-prose h4 { font-size: 1em; }
+.mg-prose ul { list-style: disc; padding-left: 1.25em; }
+.mg-prose ol { list-style: decimal; padding-left: 1.4em; }
+.mg-prose li + li { margin-top: 0.25em; }
+.mg-prose code { font-family: ui-monospace, Menlo, monospace; font-size: 0.88em; background: rgba(120,113,108,.14); padding: 0.05em 0.3em; border-radius: 4px; }
+.mg-prose pre { background: rgba(120,113,108,.12); padding: 0.6em 0.75em; border-radius: 6px; overflow-x: auto; }
+.mg-prose pre code { background: none; padding: 0; }
+.mg-prose blockquote { border-left: 3px solid rgba(120,113,108,.4); padding-left: 0.7em; opacity: .85; }
+.mg-prose a { color: #22766c; text-decoration: underline; }
+.mg-prose table { border-collapse: collapse; font-size: 0.92em; }
+.mg-prose td, .mg-prose th { border: 1px solid rgba(120,113,108,.3); padding: 0.2em 0.45em; }
+.mg-prose math[display="block"] { display: block; margin: 0.5em 0; overflow-x: auto; }
+.mg-prose strong { font-weight: 600; }
