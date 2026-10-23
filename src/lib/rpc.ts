@@ -20,7 +20,7 @@ export const rpc: RpcClient = new Proxy({} as RpcClient, {
       try {
         res = await chrome.runtime.sendMessage(req);
       } catch (e) {
-        throw new Error(`Marginalia background unavailable: ${(e as Error).message}`);
+        throw new Error(`Archive background unavailable: ${(e as Error).message}`);
       }
       if (!res) throw new Error(`No response for ${method}`);
       if (!res.ok) throw new Error(res.error);

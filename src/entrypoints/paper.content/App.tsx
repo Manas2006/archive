@@ -98,7 +98,7 @@ export function App({ ctx }: { ctx: ContentScriptContext }) {
     try {
       setState(await rpc.getPaperState(page.paperId));
     } catch (e) {
-      console.warn('[marginalia]', e);
+      console.warn('[archive]', e);
     }
   }, [page?.paperId]);
 

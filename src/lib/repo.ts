@@ -9,6 +9,8 @@ import { nowIso, uuid } from './ids';
 import type {
   Annotation,
   Attachment,
+  FeedItem,
+  Follow,
   FullText,
   LibraryEntry,
   Medium,
@@ -308,6 +310,124 @@ export async function deleteTopic(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Followed authors and the "For you" feed (personal)
+// ---------------------------------------------------------------------------
+
+export const normAuthorName = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+export function followIdFor(name: string, s2AuthorId?: string | null): string {
+  return s2AuthorId ? `s2a:${s2AuthorId}` : `name:${normAuthorName(name)}`;
+}
+
+export async function listFollows(): Promise<Follow[]> {
+  return (await db().follows.toArray()).filter(alive).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Follow an author. Re-following a soft-deleted one restores it. A name-only follow is upgraded when an id is known. */
+export async function follow(input: { name: string; s2AuthorId?: string | null; affiliation?: string; paperCount?: number }): Promise<Follow> {
+  const d = db();
+  const id = followIdFor(input.name, input.s2AuthorId);
+  const existing = await d.follows.get(id);
+  const meta = existing ?? (await newMeta());
+  const f: Follow = {
+    ...meta,
+    id,
+    name: input.name.trim(),
+    s2AuthorId: input.s2AuthorId ?? null,
+    affiliation: input.affiliation ?? existing?.affiliation,
+    paperCount: input.paperCount ?? existing?.paperCount,
+    lastCheckedAt: existing?.lastCheckedAt ?? null,
+    deletedAt: null,
+    updatedAt: nowIso(),
+  };
+  await d.follows.put(f);
+  const keys = [id];
+  // drop a name-only duplicate once we know the real author
+  if (input.s2AuthorId) {
+    const byName = await d.follows.get(followIdFor(input.name));
+    if (byName && !byName.deletedAt) {
+      await d.follows.put({ ...byName, deletedAt: nowIso(), updatedAt: nowIso() });
+      keys.push(byName.id);
+    }
+  }
+  await log('follows', keys, 'put', []);
+  return f;
+}
+
+export async function updateFollow(id: string, patch: Patch<Follow>): Promise<Follow | undefined> {
+  const d = db();
+  const next = await d.transaction('rw', d.follows, d.changes, async () => {
+    const f = await d.follows.get(id);
+    if (!alive(f)) return undefined;
+    const n: Follow = { ...f, ...resolvePatch(f, patch), id, updatedAt: nowIso() };
+    await d.follows.put(n);
+    await d.changes.add({ table: 'follows', key: id, op: 'put', at: n.updatedAt, synced: 0 });
+    return n;
+  });
+  if (next) emitChange({ table: 'follows', keys: [id], paperIds: [] });
+  return next;
+}
+
+export async function unfollow(id: string): Promise<void> {
+  const f = await db().follows.get(id);
+  if (!f) return;
+  await db().follows.put({ ...f, deletedAt: nowIso(), updatedAt: nowIso() });
+  await log('follows', [id], 'delete', []);
+}
+
+export async function listFeed(status?: FeedItem['status']): Promise<FeedItem[]> {
+  const rows = (await db().feed.toArray()).filter(alive);
+  return (status ? rows.filter((r) => r.status === status) : rows).sort((a, b) => b.score - a.score || b.foundAt.localeCompare(a.foundAt));
+}
+
+export async function getFeedItem(id: string): Promise<FeedItem | undefined> {
+  const f = await db().feed.get(id);
+  return alive(f) ? f : undefined;
+}
+
+/** Add candidates. An existing item keeps its status and gains any new reasons; its score becomes the max. */
+export async function addFeedItems(items: FeedItem[]): Promise<number> {
+  const d = db();
+  let added = 0;
+  const keys: string[] = [];
+  await d.transaction('rw', d.feed, d.changes, async () => {
+    for (const it of items) {
+      const cur = await d.feed.get(it.id);
+      let next: FeedItem;
+      if (cur && !cur.deletedAt) {
+        const sig = (r: FeedItem['reasons'][number]) => JSON.stringify({ ...r, score: undefined, count: undefined });
+        const have = new Set(cur.reasons.map(sig));
+        const reasons = [...cur.reasons, ...it.reasons.filter((r) => !have.has(sig(r)))];
+        next = { ...cur, ...it, status: cur.status, foundAt: cur.foundAt, createdAt: cur.createdAt, reasons, score: Math.max(cur.score, it.score), updatedAt: nowIso() };
+      } else {
+        next = { ...it, updatedAt: nowIso() };
+        added++;
+      }
+      await d.feed.put(next);
+      await d.changes.add({ table: 'feed', key: it.id, op: 'put', at: next.updatedAt, synced: 0 });
+      keys.push(it.id);
+    }
+  });
+  if (keys.length) emitChange({ table: 'feed', keys, paperIds: [] });
+  return added;
+}
+
+export async function setFeedStatus(id: string, status: FeedItem['status']): Promise<void> {
+  const d = db();
+  const f = await d.feed.get(id);
+  if (!f) return;
+  await d.feed.put({ ...f, status, updatedAt: nowIso() });
+  await log('feed', [id], 'put', []);
+}
+
+// ---------------------------------------------------------------------------
 // AI threads (personal)
 // ---------------------------------------------------------------------------
 
@@ -379,7 +499,7 @@ export async function deleteAttachment(id: string): Promise<void> {
 export async function exportAll() {
   const d = db();
   return {
-    format: 'marginalia-backup',
+    format: 'archive-backup',
     version: 1,
     exportedAt: nowIso(),
     papers: await d.papers.toArray(),
@@ -389,14 +509,16 @@ export async function exportAll() {
     topics: await d.topics.toArray(),
     threads: await d.threads.toArray(),
     attachments: await d.attachments.toArray(),
+    follows: await d.follows.toArray(),
+    feed: await d.feed.toArray(),
   };
 }
 
 export async function importAll(data: Awaited<ReturnType<typeof exportAll>>): Promise<number> {
-  if (data?.format !== 'marginalia-backup') throw new Error('Not a Marginalia backup file');
+  if (!['archive-backup', 'scribe-backup', 'marginalia-backup'].includes(data?.format)) throw new Error('Not an Archive backup file');
   const d = db();
   let n = 0;
-  await d.transaction('rw', [d.papers, d.library, d.annotations, d.projects, d.topics, d.threads, d.attachments], async () => {
+  await d.transaction('rw', [d.papers, d.library, d.annotations, d.projects, d.topics, d.threads, d.attachments, d.follows, d.feed], async () => {
     // newer record wins
     const merge = async <T extends { updatedAt?: string }>(table: any, rows: T[] | undefined, key: (r: T) => any) => {
       for (const r of rows ?? []) {
@@ -414,6 +536,8 @@ export async function importAll(data: Awaited<ReturnType<typeof exportAll>>): Pr
     await merge(d.topics, data.topics, (r) => r.id);
     await merge(d.threads, data.threads, (r) => r.id);
     await merge(d.attachments as any, data.attachments as any, (r: any) => r.id);
+    await merge(d.follows, (data as any).follows, (r: Follow) => r.id);
+    await merge(d.feed, (data as any).feed, (r: FeedItem) => r.id);
   });
   emitChange({ table: '*', keys: [], paperIds: [] });
   return n;

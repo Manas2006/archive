@@ -10,10 +10,17 @@ import { testKey } from '@/lib/ai/client';
 import { runDaily, lastDailyReport, type DailyReport } from '@/lib/daily';
 import * as repo from '@/lib/repo';
 import { annotationsJsonLd, download } from '@/lib/exports';
+import { CITE_COMMANDS, citeText } from '@/lib/cite';
+import { isFirefox, isWebApp } from '@/lib/platform';
+import { pageUrl } from '@/lib/nav';
+import { useLive } from '@/hooks/useLive';
+import { driveConfigured } from '@/lib/drive/config';
+import { connectDrive, disconnectDrive, getDriveAccount } from '@/lib/drive/auth';
+import { syncNow, type SyncReport } from '@/lib/drive/sync';
 
-function Section({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
+function Section({ id, title, description, children }: { id?: string; title: string; description?: ReactNode; children: ReactNode }) {
   return (
-    <section className="mg-card p-5">
+    <section id={id} className="mg-card scroll-mt-4 p-5">
       <h2 className="text-base font-semibold text-stone-900 dark:text-stone-50">{title}</h2>
       {description && <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">{description}</p>}
       <div className="mt-4 flex flex-col gap-4">{children}</div>
@@ -44,8 +51,9 @@ function AiSection() {
 
   return (
     <Section
+      id="ai"
       title="AI features"
-      description="Explanations, evidence finding, field extraction, topic names, review summaries and factoid drafts. They use your own Claude API key, and requests go straight from your browser to Anthropic. When this is off, every AI button is hidden and the rest of Marginalia works the same."
+      description="Explanations, evidence finding, questions across your whole library, related-work drafts, field extraction, topic names, review summaries and factoid drafts. They use your own Claude API key, and requests go straight from your browser to Anthropic. When this is off, every AI button is hidden and the rest of Archive works the same."
     >
       <Toggle checked={s.aiEnabled} onChange={(v) => updateSettings({ aiEnabled: v })} label="Turn on AI features" />
       {s.aiEnabled && (
@@ -57,7 +65,7 @@ function AiSection() {
               <a className="text-accent-700 underline" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
                 console.anthropic.com
               </a>
-              . It's stored only in this browser's extension storage.
+              . {isWebApp() ? "It's stored only in this browser on this device." : "It's stored only in this browser's extension storage."}
             </span>
             <div className="mt-2 flex gap-2">
               <input
@@ -148,7 +156,7 @@ function BackgroundSection() {
   return (
     <Section
       title="Daily check"
-      description="Once a day Marginalia asks Semantic Scholar and DBLP whether your preprints were published (and swaps in the venue BibTeX), fetches embeddings and references for new papers, re-sorts topics and re-ranks the inbox."
+      description="Once a day Archive asks Semantic Scholar and DBLP whether your preprints were published (and swaps in the venue BibTeX), fetches embeddings and references for new papers, re-sorts topics and re-ranks the inbox."
     >
       <Toggle checked={s.dailyChecks} onChange={(v) => updateSettings({ dailyChecks: v })} label="Run the daily check" />
       <label className="block">
@@ -192,13 +200,130 @@ function BackgroundSection() {
   );
 }
 
+function DriveSection() {
+  const s = useSettings();
+  const { data: account, reload } = useLive(() => getDriveAccount(), []);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [sync, setSync] = useState<SyncReport | null>(null);
+  const configured = driveConfigured();
+  return (
+    <Section
+      id="drive"
+      title="Google Drive"
+      description="Save PDFs (with your highlights in them) to your Drive, keep project .bib files there for Overleaf, and sync your library between your computer, phone and iPad. Archive can only see files it creates."
+    >
+      {!configured ? (
+        <p className="text-sm text-stone-500">This copy of Archive wasn't built with a Google sign-in client. If you built it yourself, see docs/google-drive-setup.md in the repository.</p>
+      ) : !account ? (
+        <div className="flex flex-col gap-2">
+          <button
+            className="mg-btn-primary self-start"
+            disabled={!!busy}
+            onClick={() => {
+              setBusy('connect');
+              setErr(null);
+              connectDrive()
+                .then(() => reload())
+                .catch((e) => setErr((e as Error).message))
+                .finally(() => setBusy(null));
+            }}
+          >
+            {busy === 'connect' ? <Spinner /> : <Icon name="folder" size={14} />} Connect Google Drive
+          </button>
+          <p className="text-xs text-stone-500">Google will ask to let Archive see and manage only the files it creates. Nothing else in your Drive is visible to it.</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300">
+              <Icon name="check" size={14} /> Connected as {account.email}
+            </span>
+            <button
+              className="mg-btn-ghost text-xs text-stone-500"
+              onClick={async () => {
+                await disconnectDrive();
+                reload();
+              }}
+            >
+              Disconnect
+            </button>
+          </div>
+          <Toggle checked={s.driveSync} onChange={(v) => updateSettings({ driveSync: v })} label="Sync my library across devices" description="Papers, highlights, notes, projects and who you follow, through one file in Archive/.sync in your Drive. Sign in with the same Google account on your phone or iPad." />
+          {s.driveSync && (
+            <div className="flex flex-wrap items-center gap-3 pl-12">
+              <button
+                className="mg-btn py-1 text-xs"
+                disabled={!!busy}
+                onClick={async () => {
+                  setBusy('sync');
+                  setErr(null);
+                  try {
+                    setSync(await syncNow());
+                  } catch (e) {
+                    setErr((e as Error).message);
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+              >
+                {busy === 'sync' ? <Spinner size={12} /> : <Icon name="refresh" size={13} />} Sync now
+              </button>
+              {sync && <span className="text-xs text-stone-500">{sync.error ? sync.error : `Synced ${new Date(sync.at).toLocaleTimeString()}: ${sync.pulled} change${sync.pulled === 1 ? '' : 's'} from other devices${sync.pushed ? ', uploaded this device' : ''}.`}</span>}
+            </div>
+          )}
+          <Toggle checked={s.driveAutoSave} onChange={(v) => updateSettings({ driveAutoSave: v })} label="Save every new paper's PDF to Drive" description="Into Archive/<first project>/ (or Unsorted), named by citation key. You can always save one by hand from a paper's page." />
+          <Toggle checked={s.driveAnnotatedPdfs} onChange={(v) => updateSettings({ driveAnnotatedPdfs: v })} label="Put my highlights and notes in the PDFs" description="They show up as normal PDF highlights in Drive's preview, Preview, Acrobat and GoodNotes." />
+          <p className="text-xs text-stone-500">For Overleaf: open a project in the library and click Overleaf to keep its .bib file in Drive with a link Overleaf can read.</p>
+        </>
+      )}
+      {err && <p className="text-sm text-rose-700">{err}</p>}
+    </Section>
+  );
+}
+
+function WritingSection() {
+  const s = useSettings();
+  return (
+    <Section id="writing" title="Citations" description="What the Cite buttons copy, for pasting into LaTeX, Overleaf or Markdown.">
+      <label className="block">
+        <span className="text-sm font-medium">Citation command</span>
+        <select className="mg-input mt-1" value={s.citeCommand} onChange={(e) => updateSettings({ citeCommand: e.target.value })}>
+          {CITE_COMMANDS.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+        <span className="mt-1 block font-mono text-xs text-stone-500">Example: {citeText(['vaswani2017attention', 'brown2020language'], s.citeCommand)}</span>
+      </label>
+    </Section>
+  );
+}
+
+function ForYouSection() {
+  const s = useSettings();
+  return (
+    <Section id="foryou" title="For you" description="Once a day Archive looks for new papers by authors you follow, and new papers that fit your projects, and lists them under For you in the library.">
+      <Toggle checked={s.feedEnabled} onChange={(v) => updateSettings({ feedEnabled: v })} label="Look for new papers every day" />
+      {!isWebApp() && <Toggle checked={s.feedNotify} onChange={(v) => updateSettings({ feedNotify: v })} label="Notify me when new papers show up" />}
+      <a className="mg-btn self-start" href={pageUrl('library', 'view=following')}>
+        <Icon name="star" size={14} /> Manage who you follow
+      </a>
+    </Section>
+  );
+}
+
 function DataSection() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
   return (
-    <Section title="Your data" description="Everything is stored in this browser. Back it up, move it to another browser, or export your annotations in the W3C Web Annotation format.">
+    <Section id="data" title="Your data" description="Everything is stored in this browser. Back it up, move it to another browser, or export your annotations in the W3C Web Annotation format.">
       <div className="flex flex-wrap gap-2">
-        <button className="mg-btn" onClick={async () => download(`marginalia-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(await repo.exportAll(), null, 1), 'application/json')}>
+        <a className="mg-btn" href={pageUrl('library', 'view=all&import=1')}>
+          <Icon name="file" size={14} /> Import from Zotero or BibTeX
+        </a>
+        <button className="mg-btn" onClick={async () => download(`archive-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(await repo.exportAll(), null, 1), 'application/json')}>
           <Icon name="download" size={14} /> Export backup
         </button>
         <button className="mg-btn" onClick={() => fileRef.current?.click()}>
@@ -209,7 +334,7 @@ function DataSection() {
           onClick={async () => {
             const anns = await repo.listAllAnnotations();
             const papers = new Map((await repo.listPapers()).map((p) => [p.id, p] as const));
-            download('marginalia-annotations.jsonld', JSON.stringify(annotationsJsonLd(anns, papers), null, 2), 'application/ld+json');
+            download('archive-annotations.jsonld', JSON.stringify(annotationsJsonLd(anns, papers), null, 2), 'application/ld+json');
           }}
         >
           <Icon name="file" size={14} /> Export annotations (JSON-LD)
@@ -252,25 +377,31 @@ function DataSection() {
 
 function App() {
   const s = useSettings();
-  const [authors, setAuthors] = useState('');
-  useEffect(() => {
-    if (s.loaded) setAuthors(s.followedAuthors.join('\n'));
-  }, [s.loaded]);
   const welcome = location.hash === '#welcome';
+  useEffect(() => {
+    if (!s.loaded) return;
+    const id = location.hash.slice(1);
+    if (id && id !== 'welcome') document.getElementById(id)?.scrollIntoView();
+  }, [s.loaded]);
   if (!s.loaded) return null;
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-stone-950">
-      <div className="mx-auto flex max-w-2xl flex-col gap-5 px-4 py-10">
+      <div className="mx-auto flex max-w-2xl flex-col gap-5 px-4 pb-10 pt-[max(2.5rem,env(safe-area-inset-top))]">
+        {isWebApp() && (
+          <a className="mg-btn-ghost self-start px-1.5" href={pageUrl('library')}>
+            <Icon name="chevronRight" size={16} className="rotate-180" /> Library
+          </a>
+        )}
         <header className="flex items-center gap-3">
           <Logo size={28} />
           <div>
-            <h1 className="text-xl font-semibold">Marginalia settings</h1>
+            <h1 className="text-xl font-semibold">Archive settings</h1>
             <p className="text-sm text-stone-500">Version {chrome.runtime.getManifest().version}</p>
           </div>
         </header>
         {welcome && (
           <div className="rounded-lg border border-accent-200 bg-accent-50 p-4 text-sm text-accent-900 dark:border-accent-800 dark:bg-accent-900/30 dark:text-accent-100">
-            <div className="font-semibold">Marginalia is installed.</div>
+            <div className="font-semibold">Archive is installed.</div>
             Open any paper on arXiv or OpenReview and press <kbd className="rounded bg-white px-1 font-mono text-xs dark:bg-stone-800">Alt+Shift+S</kbd> (or the save button at the bottom right) to save it. Highlight text on arXiv HTML pages or in the PDF reader. Pin the extension to your toolbar for quick access.
           </div>
         )}
@@ -284,16 +415,18 @@ function App() {
 
         <AiSection />
 
+        {!isWebApp() && (
         <Section title="Reading">
           <Toggle
             checked={s.readerRedirect}
             onChange={(v) => updateSettings({ readerRedirect: v })}
-            label="Open arXiv and OpenReview PDFs in the Marginalia reader"
+            label="Open arXiv and OpenReview PDFs in the Archive reader"
             description="Chrome's own PDF viewer can't be annotated. You can always switch back to the original from the reader."
           />
           <Toggle checked={s.inferReadStatus} onChange={(v) => updateSettings({ inferReadStatus: v })} label="Update reading status as you scroll" description="Moves a paper to Reading once you're into it and to Read near the end. Never moves a paper backwards." />
           <Toggle checked={s.showFloatingButton} onChange={(v) => updateSettings({ showFloatingButton: v })} label="Show the save button on paper pages" />
         </Section>
+        )}
 
         <Section title="Sorting" description="How confidently a new paper must match a project before it's filed automatically, or suggested.">
           <label className="block">
@@ -308,22 +441,17 @@ function App() {
             </span>
             <input type="range" min={0.2} max={0.8} step={0.01} value={s.suggestThreshold} onChange={(e) => updateSettings({ suggestThreshold: Number(e.target.value) })} className="w-full accent-accent-600" />
           </label>
-          <label className="block">
-            <span className="text-sm font-medium">Authors you follow</span>
-            <span className="block text-sm text-stone-500">One per line. Their papers rise to the top of your inbox.</span>
-            <textarea
-              className="mg-input mt-2"
-              rows={4}
-              value={authors}
-              onChange={(e) => setAuthors(e.target.value)}
-              onBlur={() => updateSettings({ followedAuthors: authors.split('\n').map((a) => a.trim()).filter(Boolean) })}
-              placeholder={'Leqi Liu\nPercy Liang'}
-            />
-          </label>
         </Section>
+
+        <ForYouSection />
+
+        <DriveSection />
+
+        <WritingSection />
 
         <BackgroundSection />
 
+        {!isWebApp() && (
         <Section title="Keyboard shortcuts">
           <ul className="grid gap-1.5 text-sm">
             {[
@@ -338,10 +466,13 @@ function App() {
               </li>
             ))}
           </ul>
-          <button className="mg-btn self-start" onClick={() => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' })}>
-            Change shortcuts
-          </button>
+          {!isFirefox() && (
+            <button className="mg-btn self-start" onClick={() => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' })}>
+              Change shortcuts
+            </button>
+          )}
         </Section>
+        )}
 
         <DataSection />
       </div>

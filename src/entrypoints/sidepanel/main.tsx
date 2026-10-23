@@ -53,7 +53,7 @@ function App() {
     <div className="flex min-h-screen flex-col bg-white dark:bg-stone-950">
       <header className="flex items-center gap-2 border-b border-stone-200 px-3 py-2 dark:border-stone-800">
         <Logo />
-        <span className="text-sm font-semibold tracking-tight">Marginalia</span>
+        <span className="text-sm font-semibold tracking-tight">Archive</span>
         {settings.ai && <span className="rounded bg-accent-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-700 dark:bg-accent-900/40 dark:text-accent-200">AI</span>}
         <div className="ml-auto flex items-center">
           <button className="mg-btn-ghost px-1.5" title="Open library" onClick={() => openLibrary(paperId ?? undefined)}>

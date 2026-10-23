@@ -9,13 +9,17 @@ import { extractFields, summarizeReviews } from '@/lib/ai/features';
 import { quoteOf } from '@/lib/anchoring/text';
 import { nowIso } from '@/lib/ids';
 import type { Annotation, ExtractedFields, Paper, Thread } from '@/lib/types';
-import { AutoSaveTextarea, CopyButton, EmptyState, Spinner, StatusSelect, Tabs, VenueBadge, WillCiteButton, authorLine, cx, timeAgo } from './common';
+import { AutoSaveTextarea, CopyButton, EmptyState, Spinner, StatusSelect, Tabs, VenueBadge, WillCiteButton, cx, timeAgo } from './common';
 import { HighlightList } from './HighlightList';
 import { EntryProjects } from './ProjectPicker';
 import { FactoidDialog } from './FactoidDialog';
 import { Markdown } from './Markdown';
 import { ThreadView, useThread } from './ThreadView';
 import { Icon } from './Icon';
+import { AuthorList } from './AuthorList';
+import { citeText } from '@/lib/cite';
+import { driveFileUrl, downloadAnnotatedPdf, savePdfToDrive } from '@/lib/pdfActions';
+import type { LibraryEntry } from '@/lib/types';
 
 type Tab = 'highlights' | 'notes' | 'ask' | 'info' | 'bibtex';
 
@@ -119,10 +123,7 @@ export function PaperDetail({
             paper.title
           )}
         </h1>
-        <div className="text-[13px] text-stone-600 dark:text-stone-300">
-          {authorLine(paper, 5)}
-          {paper.year ? ` · ${paper.year}` : ''}
-        </div>
+        <AuthorList paper={paper} />
         <div className="flex flex-wrap items-center gap-1.5">
           <VenueBadge paper={paper} />
           {paper.review?.avgRating != null && (
@@ -182,10 +183,50 @@ export function PaperDetail({
           <Icon name="download" size={14} /> Notes .md
         </button>
         <CopyButton text={paper.bibtex} label="BibTeX" />
+        <CopyButton text={citeText([paper.citeKey], settings.citeCommand)} label="Cite" />
+        {paper.urls.pdf && <PdfButtons paper={paper} entry={entry} />}
       </div>
 
       <FactoidDialog open={factoidOpen} onClose={() => setFactoidOpen(false)} paper={paper} entry={entry} annotations={annotations} attachments={attachments} ai={ai} />
     </div>
+  );
+}
+
+/** Download the PDF with highlights embedded, and save it to Google Drive when connected. */
+function PdfButtons({ paper, entry }: { paper: Paper; entry: LibraryEntry | null }) {
+  const { data: account } = useLive(async () => (await import('@/lib/drive/auth')).getDriveAccount(), [], (e) => e.table === '*');
+  const [busy, setBusy] = useState<'download' | 'drive' | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const run = async (kind: 'download' | 'drive') => {
+    setBusy(kind);
+    setMsg(null);
+    try {
+      const res = kind === 'download' ? await downloadAnnotatedPdf(paper) : await savePdfToDrive(paper);
+      if (res.missed) setMsg(`${res.missed} highlight${res.missed === 1 ? '' : 's'} couldn't be placed in this PDF version.`);
+      else if (kind === 'drive') setMsg('Saved to Google Drive.');
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <>
+      <button className="mg-btn" disabled={!!busy} onClick={() => run('download')} title="Download the PDF with your highlights and notes in it">
+        {busy === 'download' ? <Spinner /> : <Icon name="download" size={14} />} PDF
+      </button>
+      {account && entry && (
+        <button className="mg-btn" disabled={!!busy} onClick={() => run('drive')} title={entry.drivePdf ? `Saved ${timeAgo(entry.drivePdf.savedAt)}. Click to update it.` : 'Save the PDF to Google Drive'}>
+          {busy === 'drive' ? <Spinner /> : <Icon name="folder" size={14} />} {entry.drivePdf ? 'Update in Drive' : 'Save to Drive'}
+        </button>
+      )}
+      {entry?.drivePdf && (
+        <a className="self-center text-xs text-accent-700 hover:underline dark:text-accent-300" href={driveFileUrl(entry.drivePdf.fileId)} target="_blank" rel="noreferrer">
+          Open in Drive
+        </a>
+      )}
+      {msg && <span className="w-full text-xs text-stone-500">{msg}</span>}
+    </>
   );
 }
 
@@ -490,11 +531,12 @@ function BibtexTab({ paper }: { paper: Paper }) {
     setKey(paper.citeKey);
   }, [paper.bibtex, paper.citeKey]);
   const sourceNote: Record<Paper['bibtexSource'], string> = {
-    arxiv: 'arXiv entry. Marginalia checks daily and switches to the venue version once the paper is published.',
+    arxiv: 'arXiv entry. Archive checks daily and switches to the venue version once the paper is published.',
     openreview: 'From OpenReview.',
     dblp: `Venue version from DBLP${paper.venue ? ` (${paper.venue})` : ''}.`,
     s2: `Venue version built from Semantic Scholar${paper.venue ? ` (${paper.venue})` : ''}.`,
     manual: 'Edited by you. Automatic updates are off for this entry.',
+    import: 'Imported from your reference manager.',
   };
   const regenerate = () => {
     const bib = paper.arxivId

@@ -47,7 +47,7 @@ function describeError(status: number, body: string): string {
   } catch {
     /* not json */
   }
-  if (status === 401) return 'Your Claude API key was rejected. Check it in Marginalia settings.';
+  if (status === 401) return 'Your Claude API key was rejected. Check it in Archive settings.';
   if (status === 429) return 'Claude API rate limit reached. Try again in a moment.';
   if (status === 529) return 'Claude is overloaded right now. Try again in a moment.';
   return `Claude API error ${status}: ${msg}`;
@@ -55,7 +55,7 @@ function describeError(status: number, body: string): string {
 
 export async function callClaude(req: ClaudeRequest, keyOverride?: string): Promise<ClaudeResult> {
   const key = keyOverride ?? (await getApiKey());
-  if (!key) throw new AiError('Add a Claude API key in Marginalia settings to use AI features.');
+  if (!key) throw new AiError('Add a Claude API key in Archive settings to use AI features.');
   const stream = !!req.onDelta;
   const body = {
     model: req.model,

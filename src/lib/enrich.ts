@@ -58,7 +58,7 @@ export async function drainQueue() {
       try {
         await enrichPaper(item.id);
       } catch (e) {
-        console.warn('[marginalia] enrich failed for', item.id, e);
+        console.warn('[archive] enrich failed for', item.id, e);
       }
       await withQueue((q) => [q.filter((x) => x.id !== item.id), null]);
     }
@@ -146,7 +146,7 @@ export async function updateRelevance(paperId: string): Promise<void> {
       );
       scores = combineWithAi(scores, await aiProjectScores(paper, projects, seedTitles));
     } catch (e) {
-      console.warn('[marginalia] AI relevance failed', e);
+      console.warn('[archive] AI relevance failed', e);
     }
   }
   // decide against the entry as it is *now* (the user may have filed it while we were scoring)
@@ -207,7 +207,7 @@ export async function enrichPaper(paperId: string): Promise<void> {
       try {
         paper = (await repo.updatePaper(paper.id, { extracted: await extractFields(paper) })) ?? paper;
       } catch (e) {
-        console.warn('[marginalia] extraction failed', e);
+        console.warn('[archive] extraction failed', e);
       }
     }
     if (paper.review?.digest && !paper.review.summary) {
@@ -215,15 +215,15 @@ export async function enrichPaper(paperId: string): Promise<void> {
         const summary = await summarizeReviews(paper);
         paper = (await repo.updatePaper(paper.id, { review: { ...paper.review, summary } })) ?? paper;
       } catch (e) {
-        console.warn('[marginalia] review summary failed', e);
+        console.warn('[archive] review summary failed', e);
       }
     }
   }
 
   // 5. Sorting
-  await updateRelevance(paper.id).catch((e) => console.warn('[marginalia] relevance failed', e));
-  await assignTopic(paper.id).catch((e) => console.warn('[marginalia] topic failed', e));
-  await updatePriorities().catch((e) => console.warn('[marginalia] priority failed', e));
+  await updateRelevance(paper.id).catch((e) => console.warn('[archive] relevance failed', e));
+  await assignTopic(paper.id).catch((e) => console.warn('[archive] topic failed', e));
+  await updatePriorities().catch((e) => console.warn('[archive] priority failed', e));
 }
 
 /**

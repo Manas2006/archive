@@ -56,7 +56,7 @@ async function saveTab(tab: chrome.tabs.Tab | undefined) {
   } catch (e) {
     await chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: '#be123c' });
     await chrome.action.setBadgeText({ tabId: tab.id, text: '!' });
-    console.warn('[marginalia] save failed', e);
+    console.warn('[archive] save failed', e);
   }
 }
 
@@ -72,7 +72,7 @@ export default defineBackground({
     chrome.runtime.onInstalled.addListener(async (details) => {
       chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
       chrome.contextMenus.removeAll(() => {
-        chrome.contextMenus.create({ id: 'mg-save', title: 'Save paper to Marginalia', contexts: ['page'], documentUrlPatterns: PAPER_PATTERNS });
+        chrome.contextMenus.create({ id: 'mg-save', title: 'Save paper to Archive', contexts: ['page'], documentUrlPatterns: PAPER_PATTERNS });
         chrome.contextMenus.create({
           id: 'mg-figure',
           title: 'Use this image as the factoid figure',
@@ -81,7 +81,7 @@ export default defineBackground({
         });
         chrome.contextMenus.create({
           id: 'mg-reader',
-          title: 'Open PDF in Marginalia reader',
+          title: 'Open PDF in Archive reader',
           contexts: ['link'],
           targetUrlPatterns: ['https://arxiv.org/pdf/*', 'https://openreview.net/pdf*'],
         });

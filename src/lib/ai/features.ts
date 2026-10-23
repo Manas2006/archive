@@ -12,7 +12,7 @@ const MAX_PAPER_CHARS = 180_000; // ~45k tokens; cached across follow-ups
 
 export async function requireAi() {
   const s = await getSettings();
-  if (!aiAvailable(s)) throw new Error('AI features are turned off. Turn them on in Marginalia settings.');
+  if (!aiAvailable(s)) throw new Error('AI features are turned off. Turn them on in Archive settings.');
   return s;
 }
 

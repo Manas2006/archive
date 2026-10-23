@@ -7,12 +7,19 @@ export interface Settings {
   hasApiKey: boolean;
   fastModel: string; // bulk work: extraction, topic names, review summaries
   smartModel: string; // explanations, evidence, compare
-  readerRedirect: boolean; // open arXiv/OpenReview PDFs in the Marginalia reader
+  readerRedirect: boolean; // open arXiv/OpenReview PDFs in the Archive reader
   dailyChecks: boolean;
   s2ApiKey: string;
   displayName: string;
   userId: string;
+  /** Legacy (v0.2): typed author names. Migrated into the follows table on startup. */
   followedAuthors: string[];
+  feedEnabled: boolean; // daily "For you" check: new papers by followed authors and for each project
+  feedNotify: boolean; // notification when new papers land in For you
+  driveAutoSave: boolean; // save every new paper's PDF to Google Drive
+  driveAnnotatedPdfs: boolean; // embed highlights and notes in PDFs saved to Drive
+  driveSync: boolean; // sync the library across devices through Google Drive
+  citeCommand: string; // what "Copy cite" produces, e.g. \cite or [@] for Pandoc
   autoFileThreshold: number; // relevance >= this is filed into the project automatically
   suggestThreshold: number; // relevance >= this is suggested
   inferReadStatus: boolean;
@@ -30,6 +37,12 @@ export const DEFAULT_SETTINGS: Settings = {
   displayName: '',
   userId: '',
   followedAuthors: [],
+  feedEnabled: true,
+  feedNotify: false,
+  driveAutoSave: false,
+  driveAnnotatedPdfs: true,
+  driveSync: true,
+  citeCommand: '\\cite',
   autoFileThreshold: 0.72,
   suggestThreshold: 0.45,
   inferReadStatus: true,

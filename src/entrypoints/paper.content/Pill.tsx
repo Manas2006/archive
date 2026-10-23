@@ -29,7 +29,7 @@ export function Pill({
       <button
         data-mg-ui
         className="fixed bottom-5 right-5 z-[2147483600] flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 bg-white text-accent-700 shadow-lg hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900"
-        title="Marginalia"
+        title="Archive"
         onClick={() => setCollapsed(false)}
       >
         <Icon name={entry ? 'check' : 'bookmark'} size={17} />
@@ -56,7 +56,7 @@ export function Pill({
             await onSave();
             setBusy(false);
           }}
-          title="Save to Marginalia (Alt+Shift+S)"
+          title="Save to Archive (Alt+Shift+S)"
         >
           {busy ? <Spinner /> : <Icon name="bookmark" size={14} />} Save paper
         </button>
@@ -66,7 +66,7 @@ export function Pill({
         {highlightCount > 0 && <span className="text-xs">{highlightCount}</span>}
       </button>
       {onOpenReader && (
-        <button className="mg-btn-ghost px-2 py-1.5 text-xs" onClick={onOpenReader} title="Read and annotate the PDF in Marginalia">
+        <button className="mg-btn-ghost px-2 py-1.5 text-xs" onClick={onOpenReader} title="Read and annotate the PDF in Archive">
           <Icon name="book" size={15} /> PDF
         </button>
       )}

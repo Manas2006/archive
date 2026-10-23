@@ -18,6 +18,7 @@ export interface Author {
   name: string; // "First Last" as shown on the paper
   family?: string;
   given?: string;
+  s2Id?: string; // Semantic Scholar author id, when known
 }
 
 export interface ReviewScore {
@@ -48,7 +49,7 @@ export interface ExtractedFields {
   updatedAt: string;
 }
 
-export type PaperSource = 'arxiv' | 'openreview' | 'doi' | 's2';
+export type PaperSource = 'arxiv' | 'openreview' | 'doi' | 's2' | 'import';
 
 /** Public metadata about a paper. Identified by a canonical id that every user derives the same way. */
 export interface Paper extends SyncMeta {
@@ -74,7 +75,7 @@ export interface Paper extends SyncMeta {
   codeLinks: string[];
   citeKey: string;
   bibtex: string;
-  bibtexSource: 'arxiv' | 'openreview' | 'dblp' | 's2' | 'manual';
+  bibtexSource: 'arxiv' | 'openreview' | 'dblp' | 's2' | 'manual' | 'import';
   review?: ReviewInfo;
   extracted?: ExtractedFields;
   s2?: {
@@ -117,6 +118,8 @@ export interface LibraryEntry extends SyncMeta {
   priority: number; // 0..1, used to order the inbox
   priorityReasons: string[];
   factoidFigure?: { kind: 'url'; url: string } | { kind: 'attachment'; id: string };
+  /** The paper's PDF saved in Google Drive (synced, so other devices can open it from Drive). */
+  drivePdf?: { fileId: string; savedAt: string; annotated: boolean };
 }
 
 export interface Project extends SyncMeta {
@@ -125,6 +128,8 @@ export interface Project extends SyncMeta {
   description: string;
   seedPaperIds: string[];
   color: string;
+  /** Keep this project's .bib file up to date in Google Drive (for Overleaf). */
+  driveBib?: { enabled: boolean; fileId?: string; publicLink?: string; hash?: string; updatedAt?: string };
 }
 
 export interface Topic extends SyncMeta {
@@ -134,6 +139,43 @@ export interface Topic extends SyncMeta {
   keywords: string[];
   pinned: boolean;
   centroid?: number[];
+}
+
+// ---- Following authors and the "For you" feed (personal) ----
+
+/** An author the user follows. Keyed by Semantic Scholar author id when known, else by normalized name. */
+export interface Follow extends SyncMeta {
+  id: string; // 's2a:<authorId>' or 'name:<normalized name>'
+  name: string;
+  s2AuthorId: string | null;
+  affiliation?: string;
+  paperCount?: number;
+  lastCheckedAt: string | null;
+}
+
+export type FeedReason =
+  | { kind: 'author'; followId: string; name: string }
+  | { kind: 'project'; projectId: string; score: number }
+  | { kind: 'cites'; count: number };
+
+/** A candidate paper surfaced by the daily check. Not in the library until the user saves it. */
+export interface FeedItem extends SyncMeta {
+  id: string; // canonical paper id of the candidate ('arxiv:...', 'doi:...', 's2:...')
+  title: string;
+  authors: Author[];
+  abstract: string;
+  year: number | null;
+  published: string | null;
+  venue: string | null;
+  arxivId?: string;
+  s2Id?: string;
+  doi?: string;
+  urls: { abs?: string; pdf?: string; s2?: string };
+  reasons: FeedReason[];
+  score: number; // 0..1, used for ordering
+  status: 'new' | 'saved' | 'dismissed';
+  foundAt: string;
+  embedding?: number[]; // SPECTER v2, used for scoring and not displayed
 }
 
 // ---- Annotations: W3C Web Annotation Data Model (https://www.w3.org/TR/annotation-model/) ----

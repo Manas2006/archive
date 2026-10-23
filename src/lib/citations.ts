@@ -53,7 +53,7 @@ export async function lookupCitation(ref: CitationRef): Promise<CitationInfo> {
     if (!s2 && ref.doi) s2 = await s2Get(`DOI:${ref.doi}`);
     if (!s2 && ref.title && ref.title.length > 12) s2 = await s2MatchTitle(ref.title);
   } catch (e) {
-    console.warn('[marginalia] S2 lookup failed', e);
+    console.warn('[archive] S2 lookup failed', e);
   }
   let info: CitationInfo;
   if (s2) {

@@ -1,0 +1,21 @@
+name: Feature idea
+description: Suggest something Archive should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The reading or research task, not the solution yet.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+  - type: checkboxes
+    id: ai
+    attributes:
+      label: AI
+      options:
+        - label: This idea needs AI features (they're optional in Archive, so say how it should behave with AI off).

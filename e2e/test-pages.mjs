@@ -113,7 +113,7 @@ try {
   assert(md.suggestedFilename() === 'lovelace2024filtered.md' && mdText.includes('Read for **lab meeting**.'), 'notes Markdown export');
   const [bk] = await Promise.all([opts.waitForEvent('download'), opts.locator('button:has-text("Export backup")').click()]);
   const backup = JSON.parse(fs.readFileSync(await bk.path(), 'utf8'));
-  assert(backup.format === 'marginalia-backup' && backup.papers.length >= 6, 'backup contains papers');
+  assert(backup.format === 'archive-backup' && backup.papers.length >= 6, 'backup contains papers');
   const [ld] = await Promise.all([opts.waitForEvent('download'), opts.locator('button:has-text("Export annotations")').click()]);
   const jsonld = JSON.parse(fs.readFileSync(await ld.path(), 'utf8'));
   assert(jsonld['@context'] === 'http://www.w3.org/ns/anno.jsonld' && jsonld.first.items.length >= 1, 'W3C JSON-LD export');

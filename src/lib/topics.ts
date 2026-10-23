@@ -90,7 +90,7 @@ export async function reclusterTopics(): Promise<{ topics: number }> {
           if (names[i]) a.topic = { ...a.topic, name: names[i], nameSource: 'ai' };
         });
       } catch (e) {
-        console.warn('[marginalia] topic naming failed', e);
+        console.warn('[archive] topic naming failed', e);
       }
     }
   }

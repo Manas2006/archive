@@ -35,7 +35,7 @@ export function streamThread(req: AiPortRequest, cb: StreamCallbacks): () => voi
     }
   });
   port.onDisconnect.addListener(() => {
-    if (!finished) cb.onError?.('Connection to Marginalia was interrupted. Try again.');
+    if (!finished) cb.onError?.('Connection to Archive was interrupted. Try again.');
   });
   port.postMessage(req);
   return () => {

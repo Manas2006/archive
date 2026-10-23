@@ -11,7 +11,7 @@ export default defineConfig({
   vite: () => ({
     plugins: [
       {
-        name: 'marginalia-ascii-only',
+        name: 'archive-ascii-only',
         enforce: 'post' as const,
         generateBundle(_opts: unknown, bundle: Record<string, any>) {
           for (const chunk of Object.values(bundle)) {
@@ -23,7 +23,7 @@ export default defineConfig({
   }),
   modules: ['@wxt-dev/module-react'],
   manifest: {
-    name: 'Marginalia',
+    name: 'Archive for Papers',
     description:
       'Save, annotate and organize research papers on arXiv and OpenReview. Optional AI features with your own Claude API key.',
     version: '0.2.0',
@@ -46,7 +46,7 @@ export default defineConfig({
       'https://dblp.org/*',
       'https://api.anthropic.com/*',
     ],
-    action: { default_title: 'Marginalia' },
+    action: { default_title: 'Archive' },
     content_security_policy: {
       extension_pages:
         "script-src 'self'; object-src 'self'; img-src 'self' data: blob: https://arxiv.org https://www.arxiv.org; form-action 'none'",
@@ -58,11 +58,11 @@ export default defineConfig({
       },
       'open-side-panel': {
         suggested_key: { default: 'Alt+Shift+M' },
-        description: 'Open the Marginalia side panel',
+        description: 'Open the Archive side panel',
       },
       'open-library': {
         suggested_key: { default: 'Alt+Shift+L' },
-        description: 'Open the Marginalia library',
+        description: 'Open the Archive library',
       },
     },
   },

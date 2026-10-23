@@ -89,7 +89,7 @@ function App() {
         setAnnotator(ann);
         const meta = await d.getMetadata().catch(() => null);
         const title = (meta?.info as any)?.Title;
-        if (title && !document.title.includes(title)) document.title = `${title} · Marginalia`;
+        if (title && !document.title.includes(title)) document.title = `${title} · Archive`;
       } catch (e) {
         // restricted PDFs (e.g. OpenReview submissions under review): fall back to Chrome's viewer
         if ((e as { status?: number }).status === 401 || (e as { status?: number }).status === 403) {
@@ -111,7 +111,7 @@ function App() {
     setPaper(p);
     setEntry(p ? (await repo.getEntry(p.id)) ?? null : null);
     setAnnotations(p ? await repo.listAnnotations(p.id) : []);
-    if (p) document.title = `${p.title} · Marginalia`;
+    if (p) document.title = `${p.title} · Archive`;
   }, []);
 
   useEffect(() => {
@@ -376,7 +376,7 @@ function App() {
       <header className="fixed inset-x-0 top-0 z-30 flex h-12 items-center gap-2 border-b border-stone-200 bg-white px-3 dark:border-stone-800 dark:bg-stone-950">
         <Logo />
         <div className="min-w-0 flex-1">
-          <div className="truncate font-serif text-[15px] font-semibold text-stone-900 dark:text-stone-50">{paper?.title ?? (doc ? document.title.replace(/ · Marginalia$/, '') : 'Loading…')}</div>
+          <div className="truncate font-serif text-[15px] font-semibold text-stone-900 dark:text-stone-50">{paper?.title ?? (doc ? document.title.replace(/ · Archive$/, '') : 'Loading…')}</div>
         </div>
         {doc && (
           <div className="flex items-center gap-1 text-sm text-stone-600 dark:text-stone-300">

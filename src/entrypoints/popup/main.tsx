@@ -36,7 +36,7 @@ function App() {
     <div className="w-[340px] bg-white dark:bg-stone-950">
       <header className="flex items-center gap-2 border-b border-stone-200 px-3 py-2 dark:border-stone-800">
         <Logo />
-        <span className="text-sm font-semibold">Marginalia</span>
+        <span className="text-sm font-semibold">Archive</span>
         <span className="ml-auto text-xs text-stone-400">{settings.ai ? 'AI on' : 'AI off'}</span>
       </header>
       {paperId ? (

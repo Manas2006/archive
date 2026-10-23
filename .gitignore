@@ -4,3 +4,4 @@ node_modules
 e2e/certs
 *.log
 public/pdfjs
+dist-web

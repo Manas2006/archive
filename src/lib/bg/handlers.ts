@@ -7,6 +7,7 @@ import * as repo from '../repo';
 import { aiAvailable, getSettings } from '../settings';
 import type { Annotation, FullText, LibraryEntry, Paper, Project, ReadingStatus, TabContext } from '../types';
 import { lookupCitation, saveFromS2 } from '../citations';
+import { refreshFeed, saveFeedItem } from '../feed';
 
 export interface RpcCtx {
   tabId?: number;
@@ -178,6 +179,23 @@ export const handlers = {
     const id = await saveFromS2(s2Id);
     void enqueueEnrich(id);
     return id;
+  },
+
+  /** Save a "For you" suggestion into the library. */
+  async saveFeedItem(_ctx: RpcCtx, id: string) {
+    const paperId = await saveFeedItem(id);
+    void enqueueEnrich(paperId);
+    return paperId;
+  },
+
+  async refreshFeed() {
+    return refreshFeed({ force: true });
+  },
+
+  /** Papers added by an import: look them up in the background. */
+  async enqueueEnrich(_ctx: RpcCtx, paperIds: string[]) {
+    for (const id of paperIds) await enqueueEnrich(id);
+    return true;
   },
 
   /** Intercepted in the background message listener so it runs inside the user gesture. */

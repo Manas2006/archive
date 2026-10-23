@@ -32,7 +32,7 @@ async function buildArxivPaper(arxivId: string, version: number | undefined, pag
   try {
     [meta] = await fetchArxiv([arxivId]);
   } catch (e) {
-    console.warn('[marginalia] arXiv API failed, using page metadata', e);
+    console.warn('[archive] arXiv API failed, using page metadata', e);
   }
   const title = meta?.title ?? pageMeta?.title ?? arxivId;
   const authors = (meta?.authors ?? pageMeta?.authors ?? []).map(toAuthor);
@@ -72,7 +72,7 @@ async function buildOpenReviewPaper(forumId: string, pageMeta?: PageMeta): Promi
   try {
     meta = await fetchOpenReview(forumId);
   } catch (e) {
-    console.warn('[marginalia] OpenReview API failed, using page metadata', e);
+    console.warn('[archive] OpenReview API failed, using page metadata', e);
   }
   const title = meta?.title || pageMeta?.title || forumId;
   const authors = (meta?.authors?.length ? meta.authors : pageMeta?.authors ?? []).map(toAuthor);

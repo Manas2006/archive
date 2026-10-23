@@ -1,0 +1,39 @@
+name: Bug report
+description: Something in Archive doesn't work the way it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: paper
+    attributes:
+      label: Paper link
+      description: The arXiv or OpenReview page where it happened, if any.
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - Chrome extension
+        - Firefox extension (computer)
+        - Firefox for Android
+        - Web app on iPhone or iPad
+        - Web app on another device
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Archive version
+      description: Shown at the top of Settings.
+  - type: textarea
+    id: console
+    attributes:
+      label: Errors
+      description: Anything red in the browser console, if you can get to it (right click, Inspect, Console).
+      render: text
