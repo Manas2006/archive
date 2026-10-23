@@ -115,6 +115,21 @@ try {
   const entry = await waitFor(() => idb(lib, 'library', 'arxiv:2401.00001'), { label: 'library entry' });
   assert(entry.status === 'inbox', 'paper is in the library');
 
+  console.log('\n# Share to Archive asks first');
+  const shareUrl = `${APP}library.html?url=${encodeURIComponent('https://arxiv.org/abs/2402.00002')}`;
+  const sharePage = watch(await desk.newPage(), 'share');
+  let asked = '';
+  sharePage.once('dialog', (d) => {
+    asked = d.message();
+    void d.dismiss();
+  });
+  await sharePage.goto(shareUrl);
+  await waitFor(() => asked, { label: 'share confirmation' });
+  await sleep(1500);
+  assert(asked.includes('arxiv.org/abs/2402.00002') && (await paperNotSaved(sharePage, 'arxiv:2402.00002')), 'a shared link is not saved when the person says no');
+  assert(!(await sharePage.evaluate(() => location.search)), 'the shared link is removed from the address bar');
+  await sharePage.close();
+
   console.log('\n# OpenReview links explain where to add them');
   await addPaper(lib, 'https://openreview.net/forum?id=ORabc123');
   await waitFor(

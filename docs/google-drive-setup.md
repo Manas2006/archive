@@ -45,17 +45,14 @@ Save, then copy the **Client ID** (it looks like `1234567890-abc123.apps.googleu
 
 ## 4. Build with the client id
 
-The id is read at build time.
+The id is read at build time. The repository's `.env` holds the id of the official builds, which only works for the official extension ids and `manas2006.github.io`, so a fork needs its own. Put it in a `.env.local` file at the repository root (it wins over `.env` and is not committed):
 
-- **Extensions** (WXT): set `WXT_GOOGLE_CLIENT_ID`, for example in a `.env.local` file at the repository root:
+```
+WXT_GOOGLE_CLIENT_ID=1234567890-abc123.apps.googleusercontent.com
+VITE_GOOGLE_CLIENT_ID=1234567890-abc123.apps.googleusercontent.com
+```
 
-  ```
-  WXT_GOOGLE_CLIENT_ID=1234567890-abc123.apps.googleusercontent.com
-  ```
-
-  then build as usual (`npm run build`, or `npx wxt build -b firefox` for Firefox).
-
-- **Web app** (Vite): set `VITE_GOOGLE_CLIENT_ID` the same way (in `.env.local`, or in your GitHub Actions workflow as an environment variable for the build step).
+`WXT_GOOGLE_CLIENT_ID` is for the extensions (`npm run build`, `npm run build:firefox`) and `VITE_GOOGLE_CLIENT_ID` for the web app (`npm run build:web`). For a fork's GitHub Pages deploy, change the ids in `.env` instead, since `.env.local` isn't committed. To build without Drive at all, set both to an empty value in `.env.local`.
 
 The client id is **not a secret**. It is sent in the clear in every sign-in request and anyone can read it from the built files, so it is fine to commit it or put it in a public workflow. Google ties it to the origins and redirect URIs you registered, which is what keeps other sites from using it.
 

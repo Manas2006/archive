@@ -46,7 +46,7 @@ Other commands:
 If you publish your own copy (for your lab, say), change:
 
 1. The Firefox add-on id in `wxt.config.ts` (`browser_specific_settings.gecko.id`).
-2. The Google sign-in client, if you want Drive features: see [docs/google-drive-setup.md](docs/google-drive-setup.md), then build with `WXT_GOOGLE_CLIENT_ID=... npm run build` (and `VITE_GOOGLE_CLIENT_ID=... npm run build:web`).
+2. The Google sign-in client, if you want Drive features: the one in `.env` only works for the official builds, so make your own (see [docs/google-drive-setup.md](docs/google-drive-setup.md)) and put it in `.env.local`.
 3. `WEB_BASE` when building the web app, if it isn't served from `/archive/`.
 
 ## Pull requests

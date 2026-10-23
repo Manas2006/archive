@@ -5,3 +5,5 @@ e2e/certs
 *.log
 public/pdfjs
 dist-web
+.env.local
+.env.*.local

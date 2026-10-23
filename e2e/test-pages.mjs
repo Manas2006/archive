@@ -117,9 +117,12 @@ try {
   const [ld] = await Promise.all([opts.waitForEvent('download'), opts.locator('button:has-text("Export annotations")').click()]);
   const jsonld = JSON.parse(fs.readFileSync(await ld.path(), 'utf8'));
   assert(jsonld['@context'] === 'http://www.w3.org/ns/anno.jsonld' && jsonld.first.items.length >= 1, 'W3C JSON-LD export');
-  opts.once('dialog', (d) => d.accept());
   await opts.locator('button:has-text("Delete all data")').click();
+  await opts.locator('[role="dialog"] button:has-text("Delete everything")').click();
   await waitFor(async () => (await idb(opts, 'papers')).length === 0, { label: 'cleared' });
+  await opts.waitForLoadState('load');
+  await waitFor(async () => (await idb(opts, 'kv')).length === 0, { label: 'key and history cleared' });
+  assert(true, 'delete all data also clears the key and Ask history');
   await opts.setInputFiles('input[type="file"]', await bk.path());
   await waitFor(async () => (await idb(opts, 'papers')).length === backup.papers.length, { label: 'restored' });
   assert(true, 'backup restores after deleting everything');

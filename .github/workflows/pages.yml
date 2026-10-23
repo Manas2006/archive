@@ -1,7 +1,6 @@
 # Publishes the web app (dist-web) to GitHub Pages on every push to main.
-# One-time setup: Settings > Pages > Source: GitHub Actions. For Google Drive in the
-# web app, add a repository variable GOOGLE_CLIENT_ID (Settings > Secrets and variables
-# > Actions > Variables); see docs/google-drive-setup.md.
+# One-time setup: Settings > Pages > Source: GitHub Actions. The Google sign-in client
+# comes from .env (forks: change it there; see docs/google-drive-setup.md).
 name: Deploy web app
 
 on:
@@ -31,7 +30,6 @@ jobs:
       - run: npm run build:web
         env:
           WEB_BASE: /${{ github.event.repository.name }}/
-          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist-web
