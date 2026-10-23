@@ -39,7 +39,7 @@ export const S2_FEED_FIELDS = 'paperId,externalIds,title,abstract,authors,year,p
 // Without a key, S2 shares one rate limit across all anonymous clients and answers
 // bursts with 429s (which in the web app arrive as CORS TypeErrors). Space calls out.
 const NO_KEY_GAP_MS = 1100;
-const KEY_GAP_MS = 0;
+const KEY_GAP_MS = 1000; // new S2 API keys default to 1 request per second
 let gapOverride: number | null = null;
 const waitTurn = spacer();
 
