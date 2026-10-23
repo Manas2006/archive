@@ -227,7 +227,8 @@ async function doSync(report: SyncReport): Promise<void> {
       }
     }
 
-    await tryLease(); // renew before a possibly long upload
+    // renew before a possibly long upload; if another context took over meanwhile, let it finish
+    if (!(await tryLease())) throw new Error('Another sync took over. Try again in a moment.');
     const seqPush = await maxSeq();
     const fpPush = await fingerprint();
     const body = await buildSnapshot(tombstones, state.device);

@@ -10,7 +10,7 @@ import type { Project } from '@/lib/types';
 import { slug } from './shared';
 
 export function OverleafDialog({ open, onClose, project }: { open: boolean; onClose: () => void; project: Project }) {
-  const { data: account } = useLive(async () => (await import('@/lib/drive/auth')).getDriveAccount(), [open]);
+  const { data: account } = useLive(async () => (await import('@/lib/drive/auth')).getDriveAccount(), [open], (e) => e.table === 'drive');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const bib = project.driveBib;

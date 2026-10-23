@@ -217,7 +217,38 @@ function readBody(req) {
   });
 }
 
-export const state = { s2Calls: 0, claudeCalls: [], arxivVersion: 2 };
+export const state = { s2Calls: 0, claudeCalls: [], arxivVersion: 2, s2Down: false };
+
+// ---- the web app (dist-web), served the way GitHub Pages serves it ----
+export const WEB_HOST = 'archive.test';
+export const WEB_BASE = '/archive/';
+const DIST_WEB = path.resolve(HERE, '../dist-web');
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json',
+  '.map': 'application/json',
+  '.webmanifest': 'application/manifest+json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+};
+function serveWeb(res, p) {
+  if (p === WEB_BASE.slice(0, -1)) return res.writeHead(301, { location: WEB_BASE }), res.end();
+  if (!p.startsWith(WEB_BASE)) return res.writeHead(404, { 'content-type': 'text/plain' }), res.end('not found');
+  let rel = decodeURIComponent(p.slice(WEB_BASE.length));
+  if (!rel || rel.endsWith('/')) rel += 'index.html';
+  const file = path.join(DIST_WEB, rel);
+  if (!file.startsWith(DIST_WEB + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    return res.writeHead(404, { 'content-type': 'text/plain' }), res.end('not found');
+  }
+  res.writeHead(200, { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-cache' });
+  return res.end(fs.readFileSync(file));
+}
 
 async function handle(req, res) {
   const host = (req.headers.host ?? '').replace(/:\d+$/, '');
@@ -229,6 +260,8 @@ async function handle(req, res) {
   }
   const p = url.pathname;
 
+  if (host === WEB_HOST) return serveWeb(res, p);
+
   if (host === 'arxiv.org' || host === 'www.arxiv.org') {
     let m;
     if ((m = p.match(/^\/abs\/(\d{4}\.\d{5})(v\d+)?$/))) {
@@ -237,7 +270,7 @@ async function handle(req, res) {
     }
     if ((m = p.match(/^\/html\/2401\.00001(v(\d))?\/?$/))) {
       const v = m[2] ? Number(m[2]) : state.arxivVersion;
-      return res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }), res.end(FX(`arxiv-html-v${v}.html`));
+      return res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'access-control-allow-origin': '*' }), res.end(FX(`arxiv-html-v${v}.html`));
     }
     if (p.match(/^\/html\/(2401\.00001(v\d)?\/)?x1\.png$/)) return res.writeHead(200, { 'content-type': 'image/png', 'access-control-allow-origin': '*' }), res.end(FX('x1.png'));
     if (p.match(/^\/pdf\/\d{4}\.\d{5}(v\d+)?(\.pdf)?$/)) return res.writeHead(200, { 'content-type': 'application/pdf', 'access-control-allow-origin': '*' }), res.end(FX('paper.pdf'));
@@ -258,6 +291,7 @@ async function handle(req, res) {
   if (host === 'api.openreview.net' && p === '/notes') return json(res, 200, { notes: [] });
   if (host === 'api.semanticscholar.org') {
     state.s2Calls++;
+    if (state.s2Down) return res.writeHead(429, { 'content-type': 'application/json' }), res.end('{"message":"Too Many Requests"}');
     const fields = url.searchParams.get('fields');
     let m;
     if (p === '/graph/v1/paper/batch' && req.method === 'POST') {
@@ -319,7 +353,7 @@ export function startServer(port = 443) {
   return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)));
 }
 
-export const HOSTS = ['arxiv.org', 'www.arxiv.org', 'export.arxiv.org', 'openreview.net', 'api.openreview.net', 'api2.openreview.net', 'api.semanticscholar.org', 'dblp.org', 'api.anthropic.com'];
+export const HOSTS = ['arxiv.org', 'www.arxiv.org', 'export.arxiv.org', 'openreview.net', 'api.openreview.net', 'api2.openreview.net', 'api.semanticscholar.org', 'dblp.org', 'api.anthropic.com', 'archive.test'];
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   startServer().then(() => console.log('mock server on 443'));

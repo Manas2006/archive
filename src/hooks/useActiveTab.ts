@@ -18,8 +18,9 @@ export function useActiveTab(): ActiveTabState {
     let currentTab: number | null = null;
     const refresh = async () => {
       // ?tabId= pins the panel to one tab (used when the panel is opened as a page, e.g. in tests)
+      // (and on Firefox for Android, where the panel opens in its own tab)
       const forced = Number(new URLSearchParams(location.search).get('tabId'));
-      const [tab] = forced ? [await chrome.tabs.get(forced)] : await chrome.tabs.query({ active: true, currentWindow: true });
+      const [tab] = forced ? [await chrome.tabs.get(forced).catch(() => undefined)] : await chrome.tabs.query({ active: true, currentWindow: true });
       if (!alive || !tab?.id) return;
       currentTab = tab.id;
       const keys = [`tab:${tab.id}`, `anchors:${tab.id}`];
@@ -44,14 +45,15 @@ export function useActiveTab(): ActiveTabState {
       if (area !== 'session' || currentTab === null) return;
       if (changes[`tab:${currentTab}`] || changes[`anchors:${currentTab}`]) void refresh();
     };
-    chrome.tabs.onActivated.addListener(onActivated);
-    chrome.tabs.onUpdated.addListener(onUpdated);
+    // Firefox for Android has no windows API; the web app has no tab events at all
+    chrome.tabs.onActivated?.addListener(onActivated);
+    chrome.tabs.onUpdated?.addListener(onUpdated);
     chrome.storage.onChanged.addListener(onStorage);
     chrome.windows?.onFocusChanged?.addListener(onActivated);
     return () => {
       alive = false;
-      chrome.tabs.onActivated.removeListener(onActivated);
-      chrome.tabs.onUpdated.removeListener(onUpdated);
+      chrome.tabs.onActivated?.removeListener(onActivated);
+      chrome.tabs.onUpdated?.removeListener(onUpdated);
       chrome.storage.onChanged.removeListener(onStorage);
       chrome.windows?.onFocusChanged?.removeListener(onActivated);
     };

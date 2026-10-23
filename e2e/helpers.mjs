@@ -94,3 +94,47 @@ export async function shot(page, name) {
   await page.screenshot({ path: p });
   return p;
 }
+
+/**
+ * Select `text` the way a phone does: a touch pointerdown, then the selection
+ * changes with no mouseup (the page has to react to selectionchange).
+ */
+export async function touchSelectText(page, text, rootSelector = 'article', pointerType = 'touch') {
+  const ok = await page.evaluate(
+    ({ text, rootSelector, pointerType }) => {
+      const root = document.querySelector(rootSelector) ?? document.body;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      let all = '';
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        nodes.push([n, all.length]);
+        all += n.nodeValue;
+      }
+      const at = all.indexOf(text);
+      if (at < 0) return false;
+      const locate = (off) => {
+        for (let i = nodes.length - 1; i >= 0; i--) if (nodes[i][1] <= off) return [nodes[i][0], off - nodes[i][1]];
+        return null;
+      };
+      const [sn, so] = locate(at);
+      const [en, eo] = locate(at + text.length);
+      const target = sn.parentElement ?? root;
+      const r0 = target.getBoundingClientRect();
+      target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true, pointerType, isPrimary: true, clientX: r0.left + 2, clientY: r0.top + 2 }));
+      const r = document.createRange();
+      r.setStart(sn, so);
+      r.setEnd(en, eo);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+      return true;
+    },
+    { text, rootSelector, pointerType },
+  );
+  if (!ok) throw new Error(`text not found for selection: ${text}`);
+}
+
+/** Pixels the page is wider than the viewport (0 means no horizontal scrollbar). */
+export async function horizontalOverflow(page) {
+  return page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth);
+}

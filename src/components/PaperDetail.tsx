@@ -194,7 +194,7 @@ export function PaperDetail({
 
 /** Download the PDF with highlights embedded, and save it to Google Drive when connected. */
 function PdfButtons({ paper, entry }: { paper: Paper; entry: LibraryEntry | null }) {
-  const { data: account } = useLive(async () => (await import('@/lib/drive/auth')).getDriveAccount(), [], (e) => e.table === '*');
+  const { data: account } = useLive(async () => (await import('@/lib/drive/auth')).getDriveAccount(), [], (e) => e.table === 'drive');
   const [busy, setBusy] = useState<'download' | 'drive' | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const run = async (kind: 'download' | 'drive') => {

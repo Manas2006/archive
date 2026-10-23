@@ -15,7 +15,7 @@ import { isFirefox, isWebApp } from '@/lib/platform';
 import { pageUrl } from '@/lib/nav';
 import { useLive } from '@/hooks/useLive';
 import { driveConfigured } from '@/lib/drive/config';
-import { connectDrive, disconnectDrive, getDriveAccount } from '@/lib/drive/auth';
+import { connectDrive, disconnectDrive, getDriveAccount, prepareDriveAuth, reconnectDrive } from '@/lib/drive/auth';
 import { syncNow, type SyncReport } from '@/lib/drive/sync';
 
 function Section({ id, title, description, children }: { id?: string; title: string; description?: ReactNode; children: ReactNode }) {
@@ -202,11 +202,15 @@ function BackgroundSection() {
 
 function DriveSection() {
   const s = useSettings();
-  const { data: account, reload } = useLive(() => getDriveAccount(), []);
+  const { data: account, reload } = useLive(() => getDriveAccount(), [], (e) => e.table === 'drive');
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [sync, setSync] = useState<SyncReport | null>(null);
   const configured = driveConfigured();
+  useEffect(() => {
+    // the web app has to open Google's sign-in popup synchronously on a tap, so load it early
+    if (configured && isWebApp()) void prepareDriveAuth().catch(() => undefined);
+  }, [configured]);
   return (
     <Section
       id="drive"
@@ -249,6 +253,22 @@ function DriveSection() {
               Disconnect
             </button>
           </div>
+          {account.needsReconnect && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+              Google sign-in expired, so syncing is paused.
+              <button
+                className="mg-btn py-0.5 text-xs"
+                onClick={() => {
+                  setErr(null);
+                  reconnectDrive()
+                    .then(() => reload())
+                    .catch((e) => setErr((e as Error).message));
+                }}
+              >
+                Reconnect Google Drive
+              </button>
+            </div>
+          )}
           <Toggle checked={s.driveSync} onChange={(v) => updateSettings({ driveSync: v })} label="Sync my library across devices" description="Papers, highlights, notes, projects and who you follow, through one file in Archive/.sync in your Drive. Sign in with the same Google account on your phone or iPad." />
           {s.driveSync && (
             <div className="flex flex-wrap items-center gap-3 pl-12">
