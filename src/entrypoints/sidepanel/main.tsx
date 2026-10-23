@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@/assets/tailwind.css';
 import { useActiveTab } from '@/hooks/useActiveTab';
@@ -13,7 +14,19 @@ function openLibrary(paperId?: string) {
   chrome.tabs.create({ url: chrome.runtime.getURL('/library.html') + (paperId ? `#paper=${encodeURIComponent(paperId)}` : '') });
 }
 
-function Recent() {
+/** Firefox for Android has no sidebar, so the panel opens as a page in its own tab (sidepanel.html?tabId=). */
+function useOwnTab(): chrome.tabs.Tab | null {
+  const [own, setOwn] = useState<chrome.tabs.Tab | null>(null);
+  useEffect(() => {
+    chrome.tabs
+      .getCurrent()
+      .then((t) => setOwn(t ?? null))
+      .catch(() => {});
+  }, []);
+  return own;
+}
+
+function Recent({ tabId }: { tabId: number | null }) {
   const { data } = useLive(async () => {
     const entries = (await repo.listEntries()).sort((a, b) => (b.lastOpenedAt ?? b.createdAt).localeCompare(a.lastOpenedAt ?? a.createdAt)).slice(0, 8);
     const papers = new Map((await repo.getPapers(entries.map((e) => e.paperId))).map((p) => [p.id, p] as const));
@@ -30,8 +43,9 @@ function Recent() {
               className="w-full rounded-md px-2 py-1.5 text-left hover:bg-stone-100 dark:hover:bg-stone-800"
               onClick={() => {
                 const url = p!.urls.html ?? p!.urls.abs ?? p!.urls.openreview;
-                if (url) chrome.tabs.update({ url });
-                else openLibrary(p!.id);
+                if (!url) openLibrary(p!.id);
+                else if (tabId !== null) chrome.tabs.update(tabId, { url, active: true });
+                else chrome.tabs.update({ url });
               }}
             >
               <div className="line-clamp-2 font-serif text-sm text-stone-800 dark:text-stone-100">{p!.title}</div>
@@ -48,6 +62,11 @@ function App() {
   const tab = useActiveTab();
   const settings = useSettings();
   const paperId = tab.ctx?.paperId ?? null;
+  const own = useOwnTab();
+  const backToPaper = () => {
+    if (tab.tabId !== null) chrome.tabs.update(tab.tabId, { active: true }).catch(() => {});
+    if (own?.id !== undefined) chrome.tabs.remove(own.id).catch(() => {});
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-white dark:bg-stone-950">
@@ -56,6 +75,11 @@ function App() {
         <span className="text-sm font-semibold tracking-tight">Archive</span>
         {settings.ai && <span className="rounded bg-accent-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-700 dark:bg-accent-900/40 dark:text-accent-200">AI</span>}
         <div className="ml-auto flex items-center">
+          {own && tab.tabId !== null && tab.tabId !== own.id && (
+            <button className="mg-btn-ghost min-h-10 px-2 text-xs" title="Back to the paper" onClick={backToPaper}>
+              <Icon name="undo" size={15} /> Paper
+            </button>
+          )}
           <button className="mg-btn-ghost px-1.5" title="Open library" onClick={() => openLibrary(paperId ?? undefined)}>
             <Icon name="library" size={16} />
           </button>
@@ -80,7 +104,7 @@ function App() {
           <EmptyState icon="book" title="Open a paper">
             Go to a paper on arXiv (abstract, HTML or PDF) or OpenReview. Its highlights, notes and BibTeX show up here.
           </EmptyState>
-          <Recent />
+          <Recent tabId={own ? tab.tabId : null} />
         </>
       )}
     </div>

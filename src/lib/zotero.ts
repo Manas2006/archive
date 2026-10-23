@@ -38,7 +38,7 @@ export interface ImportedRef {
 // ---------------------------------------------------------------------------
 
 const collapse = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
-const stripBom = (s: string) => s.replace(/^﻿/, '');
+const stripBom = (s: string) => s.replace(/^\uFEFF/, '');
 const stripTags = (s: string) => s.replace(/<[^>]*>/g, '');
 const isHttp = (s: string | null | undefined): s is string => !!s && /^https?:\/\//i.test(s.trim());
 const isAuthor = (a: Author | null): a is Author => !!a;
@@ -59,9 +59,9 @@ function mergeTags(base: string[], extra: string[]): string[] {
 
 const NAMED_ENTITIES: Record<string, string> = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ensp: ' ', emsp: ' ', thinsp: ' ', shy: '',
-  ndash: '–', mdash: '—', hellip: '…', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”',
-  laquo: '«', raquo: '»', middot: '·', bull: '•', deg: '°', times: '×', minus: '−',
-  plusmn: '±', copy: '©', reg: '®', trade: '™',
+  ndash: '\u2013', mdash: '\u2014', hellip: '\u2026', lsquo: '\u2018', rsquo: '\u2019', ldquo: '“', rdquo: '”',
+  laquo: '\u00AB', raquo: '\u00BB', middot: '\u00B7', bull: '\u2022', deg: '\u00B0', times: '\u00D7', minus: '\u2212',
+  plusmn: '\u00B1', copy: '\u00A9', reg: '\u00AE', trade: '\u2122',
 };
 
 function decodeEntities(s: string): string {
@@ -79,7 +79,7 @@ function tidyNote(s: string): string {
   return s
     .replace(/\r\n?/g, '\n')
     .split('\n')
-    .map((l) => l.replace(/[ \t ]+/g, ' ').trim())
+    .map((l) => l.replace(/[ \t\u00A0]+/g, ' ').trim())
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -118,22 +118,22 @@ function noteText(v: string): string {
 
 // LaTeX to Unicode, for BibTeX values.
 const ACCENTS: Record<string, string> = {
-  '`': '̀', "'": '́', '^': '̂', '~': '̃', '=': '̄', '.': '̇', '"': '̈',
-  u: '̆', v: '̌', H: '̋', c: '̧', k: '̨', r: '̊', d: '̣', b: '̱',
+  '`': '\u0300', "'": '\u0301', '^': '\u0302', '~': '\u0303', '=': '\u0304', '.': '\u0307', '"': '\u0308',
+  u: '\u0306', v: '\u030C', H: '\u030B', c: '\u0327', k: '\u0328', r: '\u030A', d: '\u0323', b: '\u0331',
 };
 // Private-use placeholders for literal characters that later steps would otherwise rewrite.
-const LBRACE = '';
-const RBRACE = '';
-const DOLLAR = '';
-const TILDE = '';
-const BACKSLASH = '';
+const LBRACE = '\uE000';
+const RBRACE = '\uE001';
+const DOLLAR = '\uE002';
+const TILDE = '\uE003';
+const BACKSLASH = '\uE004';
 const TEX_SYMBOLS: Record<string, string> = {
   ss: 'ß', ae: 'æ', AE: 'Æ', oe: 'œ', OE: 'Œ', aa: 'å', AA: 'Å', o: 'ø', O: 'Ø', l: 'ł', L: 'Ł', i: 'ı', j: 'ȷ',
-  textendash: '–', textemdash: '—', textquoteleft: '‘', textquoteright: '’',
-  textquotedblleft: '“', textquotedblright: '”', ldots: '…', dots: '…', textellipsis: '…',
+  textendash: '\u2013', textemdash: '\u2014', textquoteleft: '\u2018', textquoteright: '\u2019',
+  textquotedblleft: '“', textquotedblright: '”', ldots: '\u2026', dots: '\u2026', textellipsis: '\u2026',
   textasciitilde: TILDE, textasciicircum: '^', textbackslash: BACKSLASH, textunderscore: '_', textbar: '|',
-  textless: '<', textgreater: '>', textbraceleft: LBRACE, textbraceright: RBRACE, textregistered: '®',
-  texttrademark: '™', textcopyright: '©', LaTeX: 'LaTeX', TeX: 'TeX', BibTeX: 'BibTeX',
+  textless: '<', textgreater: '>', textbraceleft: LBRACE, textbraceright: RBRACE, textregistered: '\u00AE',
+  texttrademark: '\u2122', textcopyright: '\u00A9', LaTeX: 'LaTeX', TeX: 'TeX', BibTeX: 'BibTeX',
 };
 const TEX_WRAPPERS =
   /\\(?:textbf|textit|textsl|textsc|textrm|textsf|texttt|textup|textmd|textnormal|emph|mbox|hbox|text|url|nolinkurl|uppercase|lowercase|MakeUppercase|MakeLowercase)\s*(?=\{)/g;
@@ -153,8 +153,8 @@ function unLatexText(s: string): string {
     .replace(/\\\}/g, RBRACE)
     .replace(/\\[ ,;:!]/g, ' ')
     .replace(/\\-/g, '')
-    .replace(/---/g, '—')
-    .replace(/--/g, '–')
+    .replace(/---/g, '\u2014')
+    .replace(/--/g, '\u2013')
     .replace(/``/g, '“')
     .replace(/''/g, '”')
     .replace(/~/g, ' ')
@@ -892,7 +892,7 @@ const yearOfPaper = (p: Paper) => p.year ?? dateFromText(p.published).year;
 function pagesOf(bib: BibEntry | undefined): [string | undefined, string | undefined] {
   const pages = bibText(bib, 'pages');
   if (!pages) return [undefined, undefined];
-  const [sp, ep] = pages.split(/\s*[-–—]+\s*/);
+  const [sp, ep] = pages.split(/\s*[-\u2013\u2014]+\s*/);
   return [sp || undefined, ep || undefined];
 }
 
@@ -1027,7 +1027,7 @@ export function toCslJson(papers: Paper[]): string {
     if (kind === 'journal' || kind === 'conference') {
       set('volume', bibText(bib, 'volume'));
       set('issue', bibText(bib, 'number'));
-      set('page', bibText(bib, 'pages')?.replace(/\s*[-–]+\s*/, '-'));
+      set('page', bibText(bib, 'pages')?.replace(/\s*[-\u2013]+\s*/, '-'));
       set('publisher', bibText(bib, 'publisher'));
     }
     set('DOI', p.doi ?? (kind === 'preprint' && p.arxivId ? `10.48550/arXiv.${p.arxivId}` : undefined));

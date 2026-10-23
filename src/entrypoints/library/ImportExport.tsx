@@ -124,7 +124,7 @@ export function ImportExportDialog({ open, onClose, projects }: { open: boolean;
 
         <section className="flex flex-col gap-2">
           <h3 className="text-sm font-semibold">Export your library</h3>
-          <p className="text-xs text-stone-500">RIS includes your highlights and notes, so Zotero imports them as notes on each item (File, Import).</p>
+          <p className="text-xs text-stone-500">RIS includes your highlights and notes, so Zotero imports them as notes on each item (File, Import). CSL JSON has no notes, but Zotero files arXiv papers from it as Preprints.</p>
           <div className="flex flex-wrap gap-2">
             <button className="mg-btn" disabled={!!busy} onClick={() => exportAs('ris')}>
               {busy === 'ris' ? <Spinner /> : <Icon name="download" size={14} />} RIS for Zotero

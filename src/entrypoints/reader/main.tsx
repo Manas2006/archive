@@ -1,28 +1,33 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import '@/assets/tailwind.css';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { createViewer, loadPdf, pageTexts, readableText, PdfAnnotator, type Viewer } from './pdf';
+import { createViewer, enablePinchZoom, loadPdf, pageTexts, readableText, PdfAnnotator, type Viewer } from './pdf';
 import { useSettings } from '@/hooks/useSettings';
 import { useThread } from '@/components/ThreadView';
 import { AiPopover, HighlightPopover, SelectionToolbar, type Rect } from '@/components/annot/Floating';
-import { Spinner, StatusSelect, WillCiteButton } from '@/components/common';
+import { EmptyState, Spinner, StatusSelect, WillCiteButton } from '@/components/common';
 import { Icon, Logo } from '@/components/Icon';
+import { MobileDrawer } from '@/components/MobileDrawer';
 import { HIGHLIGHT_CSS, highlightIdsAt } from '@/lib/anchoring/highlighter';
 import { onChange } from '@/lib/changes';
 import { parsePaperUrl, uuid } from '@/lib/ids';
+import { isTouchDevice, isWebApp } from '@/lib/platform';
 import * as repo from '@/lib/repo';
 import { rpc, onTabCommand } from '@/lib/rpc';
 import { HIGHLIGHT_LABELS, type Annotation, type HighlightLabel, type LibraryEntry, type Paper } from '@/lib/types';
+import { hasNotesPanel, openNotesPanel } from '@/platform/panel';
+import { useTextSelection } from '@/platform/selection';
 
 const style = document.createElement('style');
 style.textContent = `${HIGHLIGHT_CSS}
 .textLayer mark.mg-hl { mix-blend-mode: multiply; border-radius: 1px; }
 .textLayer ::selection { background: rgba(31, 95, 88, 0.28); }
-#viewerContainer { position: absolute; inset: 48px 0 0 0; overflow: auto; background: #e7e5e4; }
+#viewerContainer { position: absolute; inset: 48px 0 0 0; overflow: auto; background: #e7e5e4; -webkit-overflow-scrolling: touch; }
 @media (prefers-color-scheme: dark) { #viewerContainer { background: #1c1917; } }
 .pdfViewer .page { box-shadow: 0 1px 3px rgba(0,0,0,.15); border: none; margin: 12px auto; }
+@media (max-width: 639px) { .pdfViewer .page { margin: 6px auto; } }
 .mg-snip { position: absolute; border: 2px dashed #22766c; background: rgba(34,118,108,.12); pointer-events: none; z-index: 20; }
 `;
 document.head.append(style);
@@ -32,8 +37,30 @@ const SRC = params.get('src') ?? '';
 const parsed = parsePaperUrl(SRC);
 const PAPER_ID = params.get('paper') ?? parsed?.paperId ?? null;
 const VERSION = parsed?.arxiv?.version;
+const WEB = isWebApp();
+
+function openOriginal() {
+  // the web app has no tab to redirect, and an installed app would lose its place: open it alongside
+  if (WEB) window.open(SRC, '_blank', 'noopener');
+  else void rpc.openOriginal(SRC);
+}
+
+// the notes drawer (web app, Firefox for Android) loads on first open
+const PaperDetail = lazy(() => import('@/components/PaperDetail').then((m) => ({ default: m.PaperDetail })));
 
 const toRect = (r: DOMRect): Rect => ({ left: r.left, top: r.top, width: r.width, height: r.height });
+
+function MenuItem({ icon, children, onClick, active }: { icon: string; children: ReactNode; onClick: () => void; active?: boolean }) {
+  return (
+    <button
+      type="button"
+      className={`flex min-h-10 w-full items-center gap-2.5 rounded-md px-2 text-left text-sm text-stone-700 hover:bg-stone-100 dark:text-stone-200 dark:hover:bg-stone-800 ${active ? 'bg-accent-50 text-accent-800 dark:bg-accent-900/40 dark:text-accent-100' : ''}`}
+      onClick={onClick}
+    >
+      <Icon name={icon} size={16} /> {children}
+    </button>
+  );
+}
 
 function App() {
   const settings = useSettings();
@@ -51,6 +78,8 @@ function App() {
   const [entry, setEntry] = useState<LibraryEntry | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  const [menu, setMenu] = useState(false);
+  const [drawer, setDrawer] = useState(false);
   const pending = useRef(0);
 
   const showToast = (t: string) => {
@@ -91,9 +120,15 @@ function App() {
         const title = (meta?.info as any)?.Title;
         if (title && !document.title.includes(title)) document.title = `${title} · Archive`;
       } catch (e) {
-        // restricted PDFs (e.g. OpenReview submissions under review): fall back to Chrome's viewer
-        if ((e as { status?: number }).status === 401 || (e as { status?: number }).status === 403) {
-          void rpc.openOriginal(SRC);
+        const status = (e as { status?: number }).status;
+        // restricted PDFs (e.g. OpenReview submissions under review): fall back to the browser's viewer
+        if (status === 401 || status === 403) {
+          if (WEB) setError('This PDF needs you to be signed in to the site it comes from. Open it there.');
+          else void rpc.openOriginal(SRC);
+          return;
+        }
+        if (WEB && /^https:\/\/openreview\.net\//.test(SRC) && e instanceof TypeError) {
+          setError("OpenReview doesn't let web apps download its PDFs. Open this paper in the Archive extension on a computer, or open the original PDF.");
           return;
         }
         setError((e as Error).message);
@@ -103,6 +138,29 @@ function App() {
       cancelled = true;
     };
   }, []);
+
+  // keep "fit width" when the screen rotates or the window resizes
+  useEffect(() => {
+    if (!viewer) return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const onResize = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        if (viewer.currentScaleValue === 'page-width') viewer.currentScaleValue = 'page-width';
+      }, 150);
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [viewer]);
+
+  // two-finger zoom on touch screens
+  useEffect(() => {
+    if (!viewer || !containerRef.current || !isTouchDevice()) return;
+    return enablePinchZoom(containerRef.current, viewer);
+  }, [viewer]);
 
   // ---- paper state ----
   const refresh = useCallback(async () => {
@@ -181,41 +239,17 @@ function App() {
     return () => c.removeEventListener('scroll', onScroll);
   }, [annotator, entry?.paperId, paper?.id, viewer]);
 
-  // ---- selection ----
-  const [sel, setSel] = useState<{ range: Range; rect: Rect } | null>(null);
+  // ---- selection (mouse, keyboard, touch and Apple Pencil) ----
+  const [sel, setSel] = useTextSelection({
+    enabled: !!annotator,
+    accept: (range) => !!containerRef.current?.contains(range.commonAncestorContainer),
+    scrollTarget: () => containerRef.current,
+    onScroll: 'auto',
+  });
   const [popover, setPopover] = useState<{ id: string; rect: Rect; edit?: boolean } | null>(null);
   const [aiPop, setAiPop] = useState<{ rect: Rect; title: string } | null>(null);
   const t = useThread();
   const [snip, setSnip] = useState(false);
-
-  useEffect(() => {
-    const c = containerRef.current;
-    if (!c || !annotator) return;
-    const check = () => {
-      const s = window.getSelection();
-      if (!s || s.isCollapsed || !s.rangeCount || s.toString().trim().length < 2) return setSel(null);
-      const range = s.getRangeAt(0);
-      if (!c.contains(range.commonAncestorContainer)) return setSel(null);
-      const rects = [...range.getClientRects()].filter((r) => r.width > 0 && r.height > 0);
-      setSel({ range: range.cloneRange(), rect: toRect(rects[0] ?? range.getBoundingClientRect()) });
-    };
-    const onUp = () => setTimeout(check, 10);
-    const onSelChange = () => {
-      const s = window.getSelection();
-      if (!s || s.isCollapsed) setSel(null);
-    };
-    const onScroll = () => setSel(null);
-    c.addEventListener('mouseup', onUp);
-    document.addEventListener('keyup', onUp);
-    document.addEventListener('selectionchange', onSelChange);
-    c.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      c.removeEventListener('mouseup', onUp);
-      document.removeEventListener('keyup', onUp);
-      document.removeEventListener('selectionchange', onSelChange);
-      c.removeEventListener('scroll', onScroll);
-    };
-  }, [annotator]);
 
   const createHighlight = useCallback(
     async (label: HighlightLabel, withNote = false) => {
@@ -261,7 +295,7 @@ function App() {
     return () => document.removeEventListener('keydown', h, true);
   }, [sel, createHighlight]);
 
-  // click on a highlight
+  // click (or tap) on a highlight
   useEffect(() => {
     const c = containerRef.current;
     if (!c || !annotator) return;
@@ -288,6 +322,7 @@ function App() {
         setPopover(null);
         setAiPop(null);
         setSnip(false);
+        setMenu(false);
       }
     };
     document.addEventListener('keydown', onKey);
@@ -318,6 +353,16 @@ function App() {
     );
   }, [tabId, annotator, refresh]);
 
+  /** Notes and highlights: the browser's side panel where there is one, else a drawer over the page. Runs inside the click. */
+  const openPanel = () => {
+    setMenu(false);
+    if (!hasNotesPanel()) {
+      setDrawer(true);
+      return;
+    }
+    openNotesPanel({ tabId }).catch(() => setDrawer(true));
+  };
+
   // ---- AI ----
   const runAi = useCallback(
     async (kind: 'explain' | 'evidence', quote: string, rect: Rect, annotationId?: string) => {
@@ -332,7 +377,7 @@ function App() {
     [paper, entry, save, pushText, t],
   );
 
-  // ---- figure snipping ----
+  // ---- figure snipping (mouse, touch or pen) ----
   const [snipBox, setSnipBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const finishSnip = async (box: { x0: number; y0: number; x1: number; y1: number }) => {
     if (!viewer || !doc) return;
@@ -367,19 +412,27 @@ function App() {
     if (!viewer) return;
     viewer.currentScale = Math.max(0.4, Math.min(4, viewer.currentScale * factor));
   };
+  const fitWidth = () => viewer && (viewer.currentScaleValue = 'page-width');
 
   const popAnnotation = popover ? annotations.find((a) => a.id === popover.id) : null;
   const ai = settings.ai;
+  const highlightCount = annotations.filter((a) => a.target.selector).length;
 
   return (
     <div className="h-screen bg-stone-100 dark:bg-stone-900">
-      <header className="fixed inset-x-0 top-0 z-30 flex h-12 items-center gap-2 border-b border-stone-200 bg-white px-3 dark:border-stone-800 dark:bg-stone-950">
-        <Logo />
+      <header className="fixed inset-x-0 top-0 z-30 flex h-12 items-center gap-1 border-b border-stone-200 bg-white px-2 dark:border-stone-800 dark:bg-stone-950 sm:gap-2 sm:px-3">
+        {WEB ? (
+          <a href={chrome.runtime.getURL('/library.html')} title="Library" aria-label="Library" className="flex min-h-10 shrink-0 items-center px-1">
+            <Logo />
+          </a>
+        ) : (
+          <Logo />
+        )}
         <div className="min-w-0 flex-1">
           <div className="truncate font-serif text-[15px] font-semibold text-stone-900 dark:text-stone-50">{paper?.title ?? (doc ? document.title.replace(/ · Archive$/, '') : 'Loading…')}</div>
         </div>
         {doc && (
-          <div className="flex items-center gap-1 text-sm text-stone-600 dark:text-stone-300">
+          <div className="hidden items-center gap-1 text-sm text-stone-600 dark:text-stone-300 sm:flex">
             <span className="tabular-nums">
               {page} / {doc.numPages}
             </span>
@@ -390,47 +443,120 @@ function App() {
             <button className="mg-btn-ghost px-1.5" onClick={() => zoom(1.15)} title="Zoom in">
               <Icon name="zoomIn" size={16} />
             </button>
-            <button className="mg-btn-ghost px-1.5 text-xs" onClick={() => viewer && (viewer.currentScaleValue = 'page-width')} title="Fit width">
+            <button className="mg-btn-ghost px-1.5 text-xs" onClick={fitWidth} title="Fit width">
               Fit
             </button>
           </div>
         )}
-        <span className="mx-1 h-6 w-px bg-stone-200 dark:bg-stone-700" />
-        <button className={`mg-btn-ghost px-2 ${snip ? 'bg-accent-50 text-accent-800 dark:bg-accent-900/40 dark:text-accent-100' : ''}`} onClick={() => setSnip((s) => !s)} title="Snip a figure for your factoid (drag a box)">
+        <span className="mx-1 hidden h-6 w-px bg-stone-200 dark:bg-stone-700 sm:block" />
+        <button className={`mg-btn-ghost hidden px-2 sm:inline-flex ${snip ? 'bg-accent-50 text-accent-800 dark:bg-accent-900/40 dark:text-accent-100' : ''}`} onClick={() => setSnip((s) => !s)} title="Snip a figure for your factoid (drag a box)">
           <Icon name="scissors" size={16} /> <span className="text-xs">Snip</span>
         </button>
         {PAPER_ID &&
           (entry && paper ? (
             <>
               <StatusSelect size="sm" value={entry.status} onChange={(status) => repo.updateEntry(paper.id, { status })} />
-              <WillCiteButton compact value={entry.willCite} onChange={(willCite) => repo.updateEntry(paper.id, { willCite })} />
+              <span className="hidden sm:contents">
+                <WillCiteButton compact value={entry.willCite} onChange={(willCite) => repo.updateEntry(paper.id, { willCite })} />
+              </span>
             </>
           ) : (
             <button className="mg-btn-primary py-1" onClick={save}>
               <Icon name="bookmark" size={14} /> Save
             </button>
           ))}
-        <button className="mg-btn-ghost px-2" title="Notes and highlights (side panel)" onClick={() => tabId !== null && chrome.sidePanel.open({ tabId })}>
+        <button className="mg-btn-ghost min-h-10 px-2 sm:min-h-0" title="Notes and highlights" onClick={openPanel}>
           <Icon name="panel" size={16} />
-          {annotations.filter((a) => a.target.selector).length > 0 && <span className="text-xs">{annotations.filter((a) => a.target.selector).length}</span>}
+          {highlightCount > 0 && <span className="text-xs">{highlightCount}</span>}
         </button>
-        <button className="mg-btn-ghost px-2" title="Open the original PDF" onClick={() => rpc.openOriginal(SRC)}>
+        <button className="mg-btn-ghost hidden px-2 sm:inline-flex" title="Open the original PDF" onClick={openOriginal}>
           <Icon name="external" size={16} />
         </button>
+        <button className="mg-btn-ghost min-h-10 px-2 sm:hidden" title="More" aria-label="More" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>
+          <Icon name="menu" size={18} />
+        </button>
       </header>
+
+      {menu && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setMenu(false)} />
+          <div data-mg-ui data-mg-menu className="fixed right-2 top-[52px] z-40 w-64 max-w-[calc(100vw-16px)] rounded-lg border border-stone-200 bg-white p-1.5 shadow-xl dark:border-stone-700 dark:bg-stone-900">
+            {doc && (
+              <div className="flex items-center gap-1 border-b border-stone-100 px-1 pb-1.5 text-sm text-stone-600 dark:border-stone-800 dark:text-stone-300">
+                <span className="mr-auto tabular-nums">
+                  Page {page} / {doc.numPages}
+                </span>
+                <button className="mg-btn-ghost min-h-10 min-w-10 px-1.5" onClick={() => zoom(1 / 1.15)} title="Zoom out">
+                  <Icon name="zoomOut" size={18} />
+                </button>
+                <span className="w-10 text-center text-xs tabular-nums">{Math.round(scale * 100)}%</span>
+                <button className="mg-btn-ghost min-h-10 min-w-10 px-1.5" onClick={() => zoom(1.15)} title="Zoom in">
+                  <Icon name="zoomIn" size={18} />
+                </button>
+              </div>
+            )}
+            <div className="flex flex-col pt-1">
+              {doc && (
+                <MenuItem
+                  icon="file"
+                  onClick={() => {
+                    fitWidth();
+                    setMenu(false);
+                  }}
+                >
+                  Fit width
+                </MenuItem>
+              )}
+              <MenuItem
+                icon="scissors"
+                active={snip}
+                onClick={() => {
+                  setSnip((s) => !s);
+                  setMenu(false);
+                }}
+              >
+                Snip a figure for your factoid
+              </MenuItem>
+              {entry && paper && (
+                <MenuItem icon="star" active={entry.willCite} onClick={() => repo.updateEntry(paper.id, { willCite: !entry.willCite })}>
+                  {entry.willCite ? 'Will cite' : 'Mark as will cite'}
+                </MenuItem>
+              )}
+              <MenuItem
+                icon="external"
+                onClick={() => {
+                  setMenu(false);
+                  openOriginal();
+                }}
+              >
+                Open the original PDF
+              </MenuItem>
+              {WEB && (
+                <MenuItem icon="library" onClick={() => location.assign(chrome.runtime.getURL('/library.html'))}>
+                  Library
+                </MenuItem>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       <div id="viewerContainer" ref={containerRef} className={snip ? 'cursor-crosshair' : ''}>
         <div id="viewer" ref={viewerRef} className="pdfViewer" />
         {snip && (
           <div
-            className="fixed inset-0 top-12 z-20"
-            onMouseDown={(e) => setSnipBox({ x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY })}
-            onMouseMove={(e) => snipBox && setSnipBox({ ...snipBox, x1: e.clientX, y1: e.clientY })}
-            onMouseUp={async () => {
+            className="fixed inset-0 top-12 z-20 touch-none"
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture?.(e.pointerId);
+              setSnipBox({ x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY });
+            }}
+            onPointerMove={(e) => snipBox && setSnipBox({ ...snipBox, x1: e.clientX, y1: e.clientY })}
+            onPointerUp={async () => {
               if (snipBox) await finishSnip(snipBox);
               setSnipBox(null);
               setSnip(false);
             }}
+            onPointerCancel={() => setSnipBox(null)}
           >
             {snipBox && (
               <div
@@ -459,7 +585,7 @@ function App() {
           <Icon name="alert" size={26} className="text-rose-600" />
           <p className="max-w-md text-sm text-stone-700 dark:text-stone-200">{error}</p>
           {SRC && (
-            <button className="mg-btn" onClick={() => rpc.openOriginal(SRC)}>
+            <button className="mg-btn" onClick={openOriginal}>
               Open the original PDF
             </button>
           )}
@@ -470,6 +596,7 @@ function App() {
         <SelectionToolbar
           rect={sel.rect}
           ai={ai}
+          touch={sel.pointer !== 'mouse'}
           onLabel={(l) => createHighlight(l)}
           onNote={() => createHighlight('plain', true)}
           onExplain={() => {
@@ -518,10 +645,36 @@ function App() {
             t.stop();
             setAiPop(null);
           }}
-          onOpenPanel={() => tabId !== null && chrome.sidePanel.open({ tabId })}
+          onOpenPanel={openPanel}
         />
       )}
-      {toast && <div className="fixed bottom-5 right-5 z-40 rounded-lg bg-stone-900 px-3 py-2 text-sm text-white shadow-lg dark:bg-white dark:text-stone-900">{toast}</div>}
+      <MobileDrawer open={drawer} onClose={() => setDrawer(false)} title="Notes and highlights">
+        {PAPER_ID ? (
+          <Suspense
+            fallback={
+              <div className="flex justify-center p-8 text-stone-400">
+                <Spinner size={18} />
+              </div>
+            }
+          >
+            <PaperDetail
+              key={paper?.id ?? PAPER_ID}
+              paperId={paper?.id ?? PAPER_ID}
+              orphanIds={annotator?.orphanIds}
+              onJump={(id) => {
+                setDrawer(false);
+                annotator?.scrollTo(id);
+              }}
+              compact
+            />
+          </Suspense>
+        ) : (
+          <EmptyState icon="file" title="Not an arXiv or OpenReview paper">
+            Highlights are saved for arXiv and OpenReview PDFs.
+          </EmptyState>
+        )}
+      </MobileDrawer>
+      {toast && <div className="fixed bottom-5 left-4 right-4 z-40 rounded-lg bg-stone-900 px-3 py-2 text-center text-sm text-white shadow-lg dark:bg-white dark:text-stone-900 sm:left-auto sm:right-5 sm:text-left">{toast}</div>}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@/assets/tailwind.css';
 import { useActiveTab } from '@/hooks/useActiveTab';
@@ -9,6 +9,26 @@ import { Icon, Logo } from '@/components/Icon';
 import * as repo from '@/lib/repo';
 import { rpc } from '@/lib/rpc';
 import { parsePaperUrl, readerUrl } from '@/lib/ids';
+import { isAndroid } from '@/lib/platform';
+import { openNotesPanel } from '@/platform/panel';
+import { ensureHostPermissions, hasHostPermissions } from '@/platform/permissions';
+
+/** Firefox can leave Archive without access to arXiv and OpenReview (declined at install, or revoked later). */
+function HostAccessBanner() {
+  const [ok, setOk] = useState(true);
+  useEffect(() => {
+    hasHostPermissions().then(setOk);
+  }, []);
+  if (ok) return null;
+  return (
+    <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-100">
+      <p>Archive needs access to arXiv and OpenReview to save papers and show your highlights there.</p>
+      <button className="mg-btn-primary mt-2 w-full py-1.5" onClick={() => ensureHostPermissions().then(setOk)}>
+        Grant access to arXiv and OpenReview
+      </button>
+    </div>
+  );
+}
 
 function App() {
   const tab = useActiveTab();
@@ -25,20 +45,23 @@ function App() {
     return { paper: paper ?? null, entry: entry ?? null };
   }, [paperId]);
 
-  const openPanel = async () => {
-    if (tab.windowId !== null) await chrome.sidePanel.open({ windowId: tab.windowId });
-    window.close();
+  // Chrome's side panel and Firefox's sidebar only open inside the click, so no await before this
+  const openPanel = () => {
+    openNotesPanel({ windowId: tab.windowId, tabId: tab.tabId })
+      .catch(() => {})
+      .finally(() => window.close());
   };
 
   const pdfUrl = data?.paper?.urls.pdf ?? (parsed?.arxiv ? `https://arxiv.org/pdf/${parsed.arxiv.id}` : parsed?.openreviewId ? `https://openreview.net/pdf?id=${parsed.openreviewId}` : null);
 
   return (
-    <div className="w-[340px] bg-white dark:bg-stone-950">
+    <div className={`${isAndroid() ? 'min-h-screen w-full' : 'w-[340px]'} bg-white dark:bg-stone-950`}>
       <header className="flex items-center gap-2 border-b border-stone-200 px-3 py-2 dark:border-stone-800">
         <Logo />
         <span className="text-sm font-semibold">Archive</span>
         <span className="ml-auto text-xs text-stone-400">{settings.ai ? 'AI on' : 'AI off'}</span>
       </header>
+      <HostAccessBanner />
       {paperId ? (
         <div className="flex flex-col gap-3 p-3">
           {data?.paper ? (
@@ -113,7 +136,7 @@ function App() {
         <button className="mg-btn-ghost text-xs" onClick={() => rpc.openOptions().then(() => window.close())}>
           <Icon name="settings" size={14} /> Settings
         </button>
-        <span className="ml-auto pr-1 text-[11px] text-stone-400">Alt+Shift+S saves</span>
+        {!isAndroid() && <span className="ml-auto pr-1 text-[11px] text-stone-400">Alt+Shift+S saves</span>}
       </footer>
     </div>
   );

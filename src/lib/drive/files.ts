@@ -20,6 +20,7 @@ const MAX_NAME = 120;
 export function sanitizeName(name: string, fallback = 'Untitled'): string {
   let s = (name ?? '')
     .normalize('NFC')
+    .replace(/[\t\n\r]+/g, ' ')
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .replace(/[\\/:*?"<>|]+/g, '-')
     .replace(/\s+/g, ' ')
@@ -32,7 +33,7 @@ export function sanitizeName(name: string, fallback = 'Untitled'): string {
 }
 
 /** File name for a paper's PDF: its citation key. */
-export function pdfFileName(paper: Paper): string {
+export function drivePdfName(paper: Paper): string {
   return `${sanitizeName(paper.citeKey || paper.id.replace(/[:/]+/g, '-'), 'paper')}.pdf`;
 }
 
@@ -73,7 +74,7 @@ export function savePaperPdf(paper: Paper, bytes: Uint8Array, opts: { folder: st
   const tag = propValue(paper.id, PAPER_PROP);
   return serialized(`${PAPER_PROP}:${tag}`, async () => {
     const appProperties = { [PAPER_PROP]: tag };
-    const name = pdfFileName(paper);
+    const name = drivePdfName(paper);
     const existing = (await findByAppProperty(PAPER_PROP, tag))[0];
     if (existing) return uploadFile({ fileId: existing.id, name, mimeType: 'application/pdf', body: bytes, appProperties });
     const folder = opts.folder?.trim();

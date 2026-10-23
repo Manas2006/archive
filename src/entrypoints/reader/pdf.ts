@@ -7,6 +7,7 @@ import { TextIndex } from '@/lib/anchoring/dom';
 import { anchorQuote, describeQuote, normalize, positionOf, quoteOf, type Normalized } from '@/lib/anchoring/text';
 import { highlightRange, removeHighlight, setHighlightAttrs, type HighlightHandle } from '@/lib/anchoring/highlighter';
 import { annotationAttrs } from '@/lib/anchoring/annotator';
+import { isIOS, isTouchDevice } from '@/lib/platform';
 import type { Annotation, Selector } from '@/lib/types';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -28,9 +29,48 @@ export async function createViewer(container: HTMLDivElement, viewerEl: HTMLDivE
     textLayerMode: 1,
     removePageBorders: false,
     annotationMode: pdfjsLib.AnnotationMode.ENABLE,
+    // phones and tablets run out of canvas memory on zoomed pages (blank pages on iOS); pdf.js's own viewer uses 5 MP there
+    ...(isTouchDevice() || isIOS() ? { maxCanvasPixels: 5242880 } : {}),
   });
   linkService.setViewer(viewer);
   return { viewer, eventBus, linkService };
+}
+
+/**
+ * Two-finger pinch zoom on touch screens. pdf.js scales the pages with CSS during
+ * the gesture and redraws them once it settles. Returns a function that turns it off.
+ */
+export function enablePinchZoom(container: HTMLElement, viewer: Viewer, min = 0.4, max = 4): () => void {
+  const TouchManager = (pdfjsLib as any).TouchManager;
+  if (typeof TouchManager !== 'function') return () => {};
+  const ac = new AbortController();
+  let factor = 1;
+  try {
+    new TouchManager({
+      container,
+      signal: ac.signal,
+      onPinchStart: () => {
+        factor = 1;
+      },
+      onPinching: (origin: [number, number], prevDistance: number, distance: number) => {
+        factor *= distance / prevDistance;
+        const cur: number = viewer.currentScale;
+        const want = cur * factor;
+        const next = Math.max(min, Math.min(max, Math.round(want * 100) / 100));
+        if (next === cur) {
+          if (want < min || want > max) factor = 1; // at the limit: don't bank the extra
+          return;
+        }
+        factor = want / next;
+        viewer.updateScale({ drawingDelay: 400, scaleFactor: next / cur, origin });
+      },
+    });
+  } catch {
+    return () => {}; // older browsers (no AbortSignal.any): the browser's own zoom still works
+  }
+  // Safari zooms the whole page on its own gesture events unless they're cancelled
+  container.addEventListener('gesturestart', (e) => e.preventDefault(), { signal: ac.signal });
+  return () => ac.abort();
 }
 
 export async function loadPdf(src: string, onProgress?: (loaded: number, total: number) => void): Promise<PDFDocumentProxy> {

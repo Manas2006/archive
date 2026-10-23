@@ -297,7 +297,7 @@ async function resumableUpload(fileId: string | undefined, meta: Record<string, 
       const retryable = !(e instanceof DriveAuthError) && (!(e instanceof HttpError) || e.status >= 500 || e.status === 429);
       if (!retryable || resumes >= 3) throw e;
       resumes++;
-      await sleep(1000 * resumes);
+      await sleep(rateLimitBackoffMs * resumes);
       const st = await uploadStatus(session, total);
       if (st.file) return st.file;
       offset = st.offset;
@@ -373,7 +373,7 @@ export async function removePublicLink(id: string): Promise<void> {
   }
 }
 
-/** For tests: base delay for Drive's 403 rate-limit backoff. */
+/** For tests: base delay for Drive's 403 rate-limit backoff and for resuming an upload. */
 export function __setBackoffForTests(ms: number) {
   rateLimitBackoffMs = ms;
 }

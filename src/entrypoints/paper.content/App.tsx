@@ -14,6 +14,7 @@ import { CitationCard, SymbolCard } from './Cards';
 import { Pill } from './Pill';
 import type { PaperState } from '@/lib/bg/handlers';
 import type { Annotation, HighlightLabel, PageKind } from '@/lib/types';
+import { useTextSelection } from '@/platform/selection';
 import { HIGHLIGHT_LABELS } from '@/lib/types';
 
 interface Page {
@@ -32,11 +33,6 @@ function detectPage(): Page | null {
 }
 
 const toRect = (r: DOMRect): Rect => ({ left: r.left, top: r.top, width: r.width, height: r.height });
-
-function selectionRect(range: Range): Rect {
-  const rects = [...range.getClientRects()].filter((r) => r.width > 0 && r.height > 0);
-  return toRect(rects[0] ?? range.getBoundingClientRect());
-}
 
 /** Keep the background's change feed flowing into this page (reconnects if the service worker restarts). */
 function useChangeRelay() {
@@ -173,56 +169,19 @@ export function App({ ctx }: { ctx: ContentScriptContext }) {
     };
   }, [saved, paperId, isHtml]);
 
-  // ---- selection ----
-  const [sel, setSel] = useState<{ range: Range; rect: Rect } | null>(null);
+  // ---- selection (mouse, keyboard, touch and Apple Pencil) ----
+  const [sel, setSel] = useTextSelection({
+    enabled: !!annotator,
+    accept: (range) => {
+      const root = annotator?.root;
+      if (!root || !root.contains(range.commonAncestorContainer)) return false;
+      return !(range.commonAncestorContainer as Element).closest?.('[data-mg-ui]');
+    },
+    onScroll: 'follow',
+  });
   const [popover, setPopover] = useState<{ id: string; rect: Rect; edit?: boolean } | null>(null);
   const [aiPop, setAiPop] = useState<{ rect: Rect; title: string } | null>(null);
   const t = useThread();
-
-  useEffect(() => {
-    if (!annotator) return;
-    const root = annotator.root;
-    const check = () => {
-      const s = window.getSelection();
-      if (!s || s.isCollapsed || !s.rangeCount) {
-        setSel(null);
-        return;
-      }
-      const range = s.getRangeAt(0);
-      if (!root.contains(range.commonAncestorContainer) || (range.commonAncestorContainer as Element).closest?.('[data-mg-ui]')) {
-        setSel(null);
-        return;
-      }
-      if (s.toString().trim().length < 2) {
-        setSel(null);
-        return;
-      }
-      setSel({ range: range.cloneRange(), rect: selectionRect(range) });
-    };
-    const onUp = (e: MouseEvent | KeyboardEvent) => {
-      if ((e.target as Element)?.closest?.('[data-mg-ui]')) return;
-      setTimeout(check, 10);
-    };
-    const onSelChange = () => {
-      const s = window.getSelection();
-      if (!s || s.isCollapsed) setSel(null);
-    };
-    let raf = 0;
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => setSel((cur) => (cur ? { ...cur, rect: selectionRect(cur.range) } : cur)));
-    };
-    document.addEventListener('mouseup', onUp);
-    document.addEventListener('keyup', onUp);
-    document.addEventListener('selectionchange', onSelChange);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      document.removeEventListener('mouseup', onUp);
-      document.removeEventListener('keyup', onUp);
-      document.removeEventListener('selectionchange', onSelChange);
-      window.removeEventListener('scroll', onScroll);
-    };
-  }, [annotator]);
 
   const createHighlight = useCallback(
     async (label: HighlightLabel, withNote = false) => {
@@ -441,6 +400,7 @@ export function App({ ctx }: { ctx: ContentScriptContext }) {
         <SelectionToolbar
           rect={sel.rect}
           ai={ai}
+          touch={sel.pointer !== 'mouse'}
           onLabel={(l) => createHighlight(l)}
           onNote={() => createHighlight('plain', true)}
           onExplain={() => {
