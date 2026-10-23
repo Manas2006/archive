@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { handleGoogle } from './driveMock.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FX = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f));
@@ -86,6 +87,16 @@ const S2 = {
   's2-p3': { paperId: 's2-p3', externalIds: { ArXiv: '2403.00003', CorpusId: 3 }, title: PAPERS['2403.00003'].title, abstract: PAPERS['2403.00003'].abstract, venue: '', year: 2024, authors: [{ name: 'Grace Hopper' }, { name: 'Edsger Dijkstra' }], citationCount: 0, emb: vec(3, topicB) },
   's2-p4': { paperId: 's2-p4', externalIds: { CorpusId: 4 }, title: 'Generating long sequences with sparse transformers', abstract: 'Sparse factorizations of the attention matrix reduce cost to O(n sqrt n).', venue: '', year: 2019, authors: [{ name: 'Rewon Child' }, { name: 'Scott Gray' }], citationCount: 2000, emb: vec(4, topicA) },
 };
+// papers that only show up through For you: a new paper by a followed author, and two recommendations
+const RECENT = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
+S2['s2-new1'] = { paperId: 's2-new1', externalIds: { ArXiv: '2410.00011', CorpusId: 11 }, title: 'Filtered Attention Without Training', abstract: 'We show that the filtered attention scoring layer can be built without training by reusing key norms, keeping long-context retrieval accuracy while pruning key blocks.', venue: 'arXiv.org', year: 2026, publicationDate: RECENT, authors: [{ authorId: 'a-ada', name: 'Ada Lovelace' }, { authorId: 'a-bab', name: 'Charles Babbage' }], emb: vec(11, topicA) };
+S2['s2-rec1'] = { paperId: 's2-rec1', externalIds: { ArXiv: '2410.00012', CorpusId: 12 }, title: 'Pruning Key Blocks for Million-Token Retrieval', abstract: 'Block-sparse attention that prunes key blocks before the softmax scales long-context retrieval to a million tokens with filtered attention style scoring.', venue: 'arXiv.org', year: 2026, publicationDate: RECENT, authors: [{ authorId: 'a-x1', name: 'Mary Somerville' }], emb: vec(12, topicA) };
+S2['s2-rec2'] = { paperId: 's2-rec2', externalIds: { CorpusId: 13 }, title: 'Curriculum Rewards for Robot Arms', abstract: 'A curriculum of dense rewards for robot manipulation.', venue: '', year: 2026, publicationDate: RECENT, authors: [{ authorId: 'a-x2', name: 'Hedy Lamarr' }], emb: vec(13, topicB) };
+const AUTHORS = [
+  { authorId: 'a-ada', name: 'Ada Lovelace', affiliations: ['Analytical Engines Lab'], paperCount: 12, hIndex: 9 },
+  { authorId: 'a-ada2', name: 'Ada Lovelace', affiliations: [], paperCount: 1, hIndex: 1 },
+];
+
 function s2Lookup(id) {
   id = decodeURIComponent(id);
   if (S2[id]) return S2[id];
@@ -150,6 +161,13 @@ const orForum = [
 function claudeText(body) {
   const last = body.messages?.[body.messages.length - 1]?.content ?? '';
   const text = typeof last === 'string' ? last : JSON.stringify(last);
+  const sys = JSON.stringify(body.system ?? '');
+  if (sys.includes('You turn questions about research papers into search phrases')) return JSON.stringify(['filtered attention', 'key block pruning', 'retrieval recall']);
+  if (sys.includes('You answer a researcher')) return 'Filtered attention prunes irrelevant key blocks before the softmax [1], which improves retrieval recall at 128k tokens [1].';
+  if (sys.includes('You write related-work sections')) {
+    const keys = [...sys.matchAll(/<paper key=\\"([^"\\]+)\\">/g)].map((x) => x[1]);
+    return `Long-context models struggle to find facts in the middle of their input. Some work prunes attention before the softmax \\citep{${keys[0]}}, while others study which heads do the retrieval \\citep{${keys[1] ?? keys[0]}, made2099up}.`;
+  }
   if (text.includes('Return JSON with exactly these keys')) {
     // per-paper fields so library screenshots look realistic; tests only check the first paper
     const t = text.split('\n')[0];
@@ -209,6 +227,14 @@ function json(res, code, obj, extra = {}) {
   res.end(JSON.stringify(obj));
 }
 
+function readBuffer(req) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+  });
+}
+
 function readBody(req) {
   return new Promise((resolve) => {
     let b = '';
@@ -217,7 +243,7 @@ function readBody(req) {
   });
 }
 
-export const state = { s2Calls: 0, claudeCalls: [], arxivVersion: 2, s2Down: false };
+export const state = { s2Calls: 0, claudeCalls: [], recommendCalls: [], arxivVersion: 2, s2Down: false };
 
 // ---- the web app (dist-web), served the way GitHub Pages serves it ----
 export const WEB_HOST = 'archive.test';
@@ -255,12 +281,13 @@ async function handle(req, res) {
   const url = new URL(req.url, `https://${host}`);
   requests.push({ method: req.method, host, path: url.pathname + url.search, at: Date.now() });
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS' });
+    res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS' });
     return res.end();
   }
   const p = url.pathname;
 
   if (host === WEB_HOST) return serveWeb(res, p);
+  if (host === 'www.googleapis.com' || host === 'oauth2.googleapis.com') return handleGoogle(req, res, host, url, readBuffer);
 
   if (host === 'arxiv.org' || host === 'www.arxiv.org') {
     let m;
@@ -302,6 +329,19 @@ async function handle(req, res) {
       const q = (url.searchParams.get('query') ?? '').toLowerCase();
       const hit = Object.values(S2).find((x) => x.title.toLowerCase() === q.trim() || q.includes(x.title.toLowerCase()));
       return hit ? json(res, 200, { data: [{ ...s2Project(hit, fields), matchScore: 99 }] }) : json(res, 404, { error: 'Title match not found' });
+    }
+    if (p === '/graph/v1/author/search') {
+      const q = (url.searchParams.get('query') ?? '').toLowerCase();
+      return json(res, 200, { total: 2, data: AUTHORS.filter((a) => a.name.toLowerCase().includes(q)) });
+    }
+    if ((m = p.match(/^\/graph\/v1\/author\/([^/]+)\/papers$/))) {
+      const papers = m[1] === 'a-ada' ? [S2['s2-new1'], { ...S2['s2-p1'], publicationDate: '2024-01-02', authors: [{ authorId: 'a-ada', name: 'Ada Lovelace' }, { authorId: 'a-alan', name: 'Alan Turing' }] }] : [];
+      return json(res, 200, { data: papers.map((x) => s2Project(x, fields)) });
+    }
+    if (p.startsWith('/recommendations/v1/papers') && req.method === 'POST') {
+      const body = JSON.parse((await readBody(req)) || '{}');
+      state.recommendCalls.push(body);
+      return json(res, 200, { recommendedPapers: [S2['s2-rec1'], S2['s2-rec2']].map((x) => s2Project(x, fields)) });
     }
     if ((m = p.match(/^\/graph\/v1\/paper\/(.+)\/references$/))) {
       const paper = s2Lookup(m[1]);
@@ -353,7 +393,7 @@ export function startServer(port = 443) {
   return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)));
 }
 
-export const HOSTS = ['arxiv.org', 'www.arxiv.org', 'export.arxiv.org', 'openreview.net', 'api.openreview.net', 'api2.openreview.net', 'api.semanticscholar.org', 'dblp.org', 'api.anthropic.com', 'archive.test'];
+export const HOSTS = ['arxiv.org', 'www.arxiv.org', 'export.arxiv.org', 'openreview.net', 'api.openreview.net', 'api2.openreview.net', 'api.semanticscholar.org', 'dblp.org', 'api.anthropic.com', 'archive.test', 'www.googleapis.com', 'oauth2.googleapis.com', 'accounts.google.com'];
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   startServer().then(() => console.log('mock server on 443'));

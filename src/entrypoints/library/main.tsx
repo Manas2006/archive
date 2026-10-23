@@ -180,7 +180,11 @@ function App() {
       ) : (
         navOpen && (
           <div className="fixed inset-0 z-40 flex" onClick={(e) => e.target === e.currentTarget && setNavOpen(false)} style={{ background: 'rgba(28,25,23,.4)' }}>
-            <aside className="flex w-[82vw] max-w-[320px] flex-col bg-stone-50 pt-[env(safe-area-inset-top)] shadow-xl dark:bg-stone-950">
+            <aside
+              className="flex w-[82vw] max-w-[320px] flex-col bg-stone-50 pt-[env(safe-area-inset-top)] shadow-xl dark:bg-stone-950"
+              // picking any view closes the menu, including the one already showing (no hash change then)
+              onClickCapture={(e) => (e.target as Element).closest('nav button, button.mg-btn-ghost') && setTimeout(() => setNavOpen(false), 0)}
+            >
               <div className="flex items-center gap-2 px-4 py-3">
                 <Logo size={20} />
                 <span className="font-semibold tracking-tight">Archive</span>

@@ -14,7 +14,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "postinstall": "wxt prepare && node scripts/copy-pdfjs.mjs",
-    "e2e": "npm run build && for t in core reader ai pages; do PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-} node e2e/test-$t.mjs || exit 1; done",
+    "e2e": "WXT_GOOGLE_CLIENT_ID=e2e-client.apps.googleusercontent.com wxt build && for t in core reader ai pages library; do node e2e/test-$t.mjs || exit 1; done && npm run e2e:web",
     "e2e:web": "npm run build:web && node e2e/test-web.mjs",
     "fixtures": "python3 e2e/make_fixtures.py"
   },
