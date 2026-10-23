@@ -11,7 +11,8 @@ import { runDaily, lastDailyReport, type DailyReport } from '@/lib/daily';
 import * as repo from '@/lib/repo';
 import { annotationsJsonLd, download } from '@/lib/exports';
 import { CITE_COMMANDS, citeText } from '@/lib/cite';
-import { isFirefox, isWebApp } from '@/lib/platform';
+import { isAndroid, isFirefox, isWebApp } from '@/lib/platform';
+import { ensureHostPermissions, hasAiDataConsent, hasHostPermissions, onHostPermissionsChanged, requestAiDataConsent } from '@/platform/permissions';
 import { pageUrl } from '@/lib/nav';
 import { useLive } from '@/hooks/useLive';
 import { driveConfigured } from '@/lib/drive/config';
@@ -46,6 +47,10 @@ function AiSection() {
     setTest(r.ok ? { state: 'ok', models: r.models } : { state: 'bad', msg: r.error, models: [] });
     return r.ok;
   };
+  const [consent, setConsent] = useState(true);
+  useEffect(() => {
+    void hasAiDataConsent().then(setConsent);
+  }, [s.aiEnabled]);
   const modelOptions = test.models.length ? test.models : [s.fastModel, s.smartModel, 'claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'];
   const uniq = [...new Set(modelOptions)];
 
@@ -55,7 +60,26 @@ function AiSection() {
       title="AI features"
       description="Explanations, evidence finding, questions across your whole library, related-work drafts, field extraction, topic names, review summaries and factoid drafts. They use your own Claude API key, and requests go straight from your browser to Anthropic. When this is off, every AI button is hidden and the rest of Archive works the same."
     >
-      <Toggle checked={s.aiEnabled} onChange={(v) => updateSettings({ aiEnabled: v })} label="Turn on AI features" />
+      <Toggle
+        checked={s.aiEnabled}
+        onChange={(v) => {
+          // Firefox asks for data-collection consent here; it must start in the click itself
+          if (!v) void updateSettings({ aiEnabled: false });
+          else
+            void requestAiDataConsent().then((ok) => {
+              if (ok) void updateSettings({ aiEnabled: true });
+            });
+        }}
+        label="Turn on AI features"
+      />
+      {s.aiEnabled && !consent && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          Firefox needs your permission to send paper text and your API key to Anthropic.
+          <button className="mg-btn py-0.5 text-xs" onClick={() => void requestAiDataConsent().then(setConsent)}>
+            Allow
+          </button>
+        </div>
+      )}
       {s.aiEnabled && (
         <div className="flex flex-col gap-4 rounded-lg bg-stone-50 p-4 dark:bg-stone-900">
           <label className="block">
@@ -156,7 +180,7 @@ function BackgroundSection() {
   return (
     <Section
       title="Daily check"
-      description="Once a day Archive asks Semantic Scholar and DBLP whether your preprints were published (and swaps in the venue BibTeX), fetches embeddings and references for new papers, re-sorts topics and re-ranks the inbox."
+      description={`${isWebApp() ? 'Once a day, when you open the app, ' : 'Once a day '}Archive asks Semantic Scholar${isWebApp() ? '' : ' and DBLP'} whether your preprints were published (and swaps in the venue BibTeX), fetches embeddings and references for new papers, re-sorts topics, re-ranks the inbox and looks for new papers for For you.`}
     >
       <Toggle checked={s.dailyChecks} onChange={(v) => updateSettings({ dailyChecks: v })} label="Run the daily check" />
       <label className="block">
@@ -197,6 +221,25 @@ function BackgroundSection() {
       ) : null}
       {report?.errors.length ? <details className="text-xs text-stone-500"><summary>Errors</summary>{report.errors.map((e, i) => <div key={i}>{e}</div>)}</details> : null}
     </Section>
+  );
+}
+
+/** Firefox lets people decline host access at install; without it nothing on arXiv or OpenReview works. */
+function HostAccessBanner() {
+  const [ok, setOk] = useState(true);
+  useEffect(() => {
+    void hasHostPermissions().then(setOk);
+    return onHostPermissionsChanged(setOk);
+  }, []);
+  if (ok) return null;
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+      <div className="font-semibold">Archive can't see arXiv or OpenReview yet</div>
+      It needs access to those sites to save and highlight papers, and to Semantic Scholar and DBLP to look them up.
+      <button className="mg-btn-primary self-start" onClick={() => void ensureHostPermissions().then(setOk)}>
+        Grant access
+      </button>
+    </div>
   );
 }
 
@@ -419,10 +462,17 @@ function App() {
             <p className="text-sm text-stone-500">Version {chrome.runtime.getManifest().version}</p>
           </div>
         </header>
+        {!isWebApp() && <HostAccessBanner />}
         {welcome && (
           <div className="rounded-lg border border-accent-200 bg-accent-50 p-4 text-sm text-accent-900 dark:border-accent-800 dark:bg-accent-900/30 dark:text-accent-100">
             <div className="font-semibold">Archive is installed.</div>
-            Open any paper on arXiv or OpenReview and press <kbd className="rounded bg-white px-1 font-mono text-xs dark:bg-stone-800">Alt+Shift+S</kbd> (or the save button at the bottom right) to save it. Highlight text on arXiv HTML pages or in the PDF reader. Pin the extension to your toolbar for quick access.
+            {isAndroid() ? (
+              <>Open any paper on arXiv or OpenReview and tap the save button at the bottom right. Highlight text on arXiv HTML pages or in the PDF reader.</>
+            ) : (
+              <>
+                Open any paper on arXiv or OpenReview and press <kbd className="rounded bg-white px-1 font-mono text-xs dark:bg-stone-800">Alt+Shift+S</kbd> (or the save button at the bottom right) to save it. Highlight text on arXiv HTML pages or in the PDF reader. Pin the extension to your toolbar for quick access.
+              </>
+            )}
           </div>
         )}
 
@@ -435,18 +485,18 @@ function App() {
 
         <AiSection />
 
-        {!isWebApp() && (
         <Section title="Reading">
-          <Toggle
-            checked={s.readerRedirect}
-            onChange={(v) => updateSettings({ readerRedirect: v })}
-            label="Open arXiv and OpenReview PDFs in the Archive reader"
-            description="Chrome's own PDF viewer can't be annotated. You can always switch back to the original from the reader."
-          />
+          {!isWebApp() && (
+            <Toggle
+              checked={s.readerRedirect}
+              onChange={(v) => updateSettings({ readerRedirect: v })}
+              label="Open arXiv and OpenReview PDFs in the Archive reader"
+              description={`${isFirefox() ? "Firefox's" : "Chrome's"} own PDF viewer can't be annotated. You can always switch back to the original from the reader.`}
+            />
+          )}
           <Toggle checked={s.inferReadStatus} onChange={(v) => updateSettings({ inferReadStatus: v })} label="Update reading status as you scroll" description="Moves a paper to Reading once you're into it and to Read near the end. Never moves a paper backwards." />
-          <Toggle checked={s.showFloatingButton} onChange={(v) => updateSettings({ showFloatingButton: v })} label="Show the save button on paper pages" />
+          {!isWebApp() && <Toggle checked={s.showFloatingButton} onChange={(v) => updateSettings({ showFloatingButton: v })} label="Show the save button on paper pages" />}
         </Section>
-        )}
 
         <Section title="Sorting" description="How confidently a new paper must match a project before it's filed automatically, or suggested.">
           <label className="block">
@@ -471,12 +521,12 @@ function App() {
 
         <BackgroundSection />
 
-        {!isWebApp() && (
+        {!isWebApp() && !isAndroid() && (
         <Section title="Keyboard shortcuts">
           <ul className="grid gap-1.5 text-sm">
             {[
               ['Alt+Shift+S', 'Save the paper in the current tab'],
-              ['Alt+Shift+M', 'Open the notes side panel'],
+              ['Alt+Shift+M', isFirefox() ? 'Open the sidebar' : 'Open the notes side panel'],
               ['Alt+Shift+L', 'Open the library'],
               ['1 to 6', 'With text selected on a paper: highlight with a label'],
             ].map(([k, d]) => (
@@ -486,7 +536,9 @@ function App() {
               </li>
             ))}
           </ul>
-          {!isFirefox() && (
+          {isFirefox() ? (
+            <p className="text-xs text-stone-500">To change them, open about:addons, click the gear icon and choose Manage Extension Shortcuts.</p>
+          ) : (
             <button className="mg-btn self-start" onClick={() => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' })}>
               Change shortcuts
             </button>

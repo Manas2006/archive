@@ -1,10 +1,12 @@
 // Fetch a paper's PDF as bytes (for Save to Drive and "Download with highlights").
 
+import { isWebApp } from './platform';
 import type { Paper } from './types';
 
 export async function fetchPdfBytes(paper: Paper, src?: string): Promise<Uint8Array> {
   const url = src ?? paper.urls.pdf;
   if (!url) throw new Error('This paper has no PDF link.');
+  if (isWebApp() && /^https:\/\/openreview\.net\//.test(url)) throw new Error("OpenReview doesn't let other sites download its PDFs. Save it from the Archive extension on a computer, or turn on Save to Drive there.");
   const res = await fetch(url, { credentials: /^https:\/\/openreview\.net\//.test(url) ? 'include' : 'same-origin' });
   if (res.status === 401 || res.status === 403) throw new Error('This PDF needs you to be signed in to the site.');
   if (!res.ok) throw new Error(`Couldn't download the PDF (${res.status}).`);

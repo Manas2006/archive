@@ -38,9 +38,8 @@ function watch(page, label) {
     if (m.type() !== 'error') return;
     const text = `${m.text()} ${m.location()?.url ?? ''}`;
     if (CORS_BLOCKED.test(text)) expected.push(`${label}: ${m.text().slice(0, 160)}`);
-    // S2 answers "not found" with a 404 (title matches, references)
-    else if (/api\.semanticscholar\.org/.test(text) && /404|429/.test(text)) expected.push(`${label}: ${m.text().slice(0, 120)}`);
-    else if (/status of 429/.test(text) && state.s2Down) expected.push(`${label}: ${m.text().slice(0, 120)}`);
+    // S2 answers "not found" with a 404, and its 429s (the outage test) have no CORS headers
+    else if (/api\.semanticscholar\.org/.test(text) && /404|429|CORS|ERR_FAILED/.test(text)) expected.push(`${label}: ${m.text().slice(0, 120)}`);
     else errors.push(`${label} console: ${text}`);
   });
   return page;
@@ -143,6 +142,11 @@ try {
   await reader.waitForSelector('.textLayer span', { timeout: 20000 });
   await waitFor(async () => (await reader.locator('.textLayer mark.mg-hl[data-mg-label="result"]').count()) > 0, { label: 'highlight after reload', timeout: 10000 });
   assert(true, 'highlight persists after reload');
+  const finder = watch(await desk.newPage(), 'reader find');
+  await finder.goto(`${READER}&find=${encodeURIComponent('The scoring layer is trained with a contrastive objective')}`);
+  await finder.locator('.textLayer mark[data-mg-id="mg-find"]').first().waitFor({ state: 'attached', timeout: 20000 });
+  assert(true, 'reader links with &find= flash the quoted passage');
+  await finder.close();
   await reader.locator('button[title="Notes and highlights"]').click();
   await reader.locator('[role="dialog"]').getByText('improves retrieval recall', { exact: false }).first().waitFor({ timeout: 10000 });
   assert(true, 'notes button opens the drawer with the highlight list (no side panel in the web app)');
@@ -250,7 +254,12 @@ try {
   await pr.locator('[data-mg-menu]').getByText('Fit width').tap();
   await pr.locator('button[title="Notes and highlights"]').tap();
   await pr.locator('[role="dialog"]').getByText('contrastive objective', { exact: false }).first().waitFor({ timeout: 10000 });
-  assert((await horizontalOverflow(pr)) <= 0, 'drawer fits the phone screen');
+  await sleep(400); // slide-in transition
+  const drawerBox = await pr.evaluate(() => {
+    const r = document.querySelector('[role="dialog"]').getBoundingClientRect();
+    return { left: r.left, right: r.right, vw: window.innerWidth };
+  });
+  assert((await horizontalOverflow(pr)) <= 0 && Math.abs(drawerBox.left) < 1 && Math.abs(drawerBox.right - drawerBox.vw) < 1, `drawer fills the phone screen (${Math.round(drawerBox.left)} to ${Math.round(drawerBox.right)} of ${drawerBox.vw})`);
   await shot(pr, 'web-phone-drawer');
   console.log(`  (touch media query coarse: ${coarse})`);
   await phone.close();

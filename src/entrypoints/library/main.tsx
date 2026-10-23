@@ -247,10 +247,10 @@ function App() {
                 <Icon name="search" size={19} />
               </button>
             ) : (
-              <div className="ml-auto flex items-center gap-3">
+              <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 xl:gap-3">
                 <div className="relative">
                   <Icon name="search" size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
-                  <input className="mg-input w-72 py-1.5 pl-8" placeholder="Search titles, abstracts, highlights, notes…" value={query} onChange={(e) => setQuery(e.target.value)} />
+                  <input className="mg-input w-56 py-1.5 pl-8 xl:w-72" placeholder="Search titles, abstracts, highlights, notes…" value={query} onChange={(e) => setQuery(e.target.value)} />
                 </div>
                 <AddPaper onAdded={(id) => go({ kind: 'all' }, id)} />
               </div>

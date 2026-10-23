@@ -1,6 +1,7 @@
 // Venue upgrade: once an arXiv preprint appears at a venue, replace its arXiv
 // BibTeX with the venue version from DBLP (or Semantic Scholar as a fallback).
 
+import { isWebApp } from './platform';
 import { genericBibtex, normalizeForeignBib } from './bibtex';
 import * as repo from './repo';
 import { dblpBibtex, dblpFindVenueRecord, isCorrKey } from './sources/dblp';
@@ -23,10 +24,11 @@ export async function checkVenue(paper: Paper, s2: S2Paper | null): Promise<Venu
   let dblpKey = s2?.externalIds?.DBLP;
   let venueName = venue;
 
-  if (dblpKey && !isCorrKey(dblpKey)) {
+  // DBLP doesn't allow cross-site requests, so the web app goes straight to the Semantic Scholar entry
+  if (dblpKey && !isCorrKey(dblpKey) && !isWebApp()) {
     bib = await dblpBibtex(dblpKey);
   }
-  if (!bib && venue) {
+  if (!bib && venue && !isWebApp()) {
     // S2 knows a venue but has no (or only a CoRR) DBLP key: search DBLP by title
     const hit = await dblpFindVenueRecord(paper.title);
     if (hit) {

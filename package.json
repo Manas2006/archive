@@ -1,16 +1,21 @@
 {
   "name": "archive",
-  "description": "Save, annotate and organize research papers on arXiv and OpenReview.",
-  "private": true,
-  "version": "0.2.0",
+  "description": "Read, highlight, sort and cite research papers from arXiv and OpenReview. Browser extension and phone/iPad web app.",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
+    "dev": "wxt",
     "build": "wxt build",
+    "build:firefox": "wxt build -b firefox --mv3",
+    "build:web": "vite build -c vite.web.config.ts",
+    "dev:web": "vite -c vite.web.config.ts",
     "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox --mv3",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "postinstall": "wxt prepare && node scripts/copy-pdfjs.mjs",
     "e2e": "npm run build && for t in core reader ai pages; do PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-} node e2e/test-$t.mjs || exit 1; done",
+    "e2e:web": "npm run build:web && node e2e/test-web.mjs",
     "fixtures": "python3 e2e/make_fixtures.py"
   },
   "dependencies": {
@@ -30,6 +35,7 @@
     "@types/dompurify": "^3.0.5",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^6.1.2",
     "@wxt-dev/module-react": "^1.2.2",
     "autoprefixer": "^10.6.1",
     "fake-indexeddb": "^6.2.5",
@@ -38,7 +44,14 @@
     "postcss": "^8.5.29",
     "tailwindcss": "^3.4.19",
     "typescript": "^7.0.2",
+    "vite": "^8.3.5",
     "vitest": "^5.0.3",
     "wxt": "^0.20.27"
-  }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Manas2006/archive.git"
+  },
+  "private": true
 }

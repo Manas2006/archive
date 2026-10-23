@@ -15,7 +15,8 @@ export function MobileDrawer({ open, onClose, title, children }: { open: boolean
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);
-    panel.current?.focus();
+    // the panel is still off-screen (sliding in): scrolling it into view would shift the whole drawer
+    panel.current?.focus({ preventScroll: true });
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose]);
   return (

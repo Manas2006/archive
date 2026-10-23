@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import '@/assets/tailwind.css';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { createViewer, enablePinchZoom, loadPdf, pageTexts, readableText, PdfAnnotator, type Viewer } from './pdf';
+import { createViewer, enablePinchZoom, fetchPdfData, openPdf, pageTexts, readableText, PdfAnnotator, type Viewer } from './pdf';
 import { useSettings } from '@/hooks/useSettings';
 import { useThread } from '@/components/ThreadView';
 import { AiPopover, HighlightPopover, SelectionToolbar, type Rect } from '@/components/annot/Floating';
@@ -18,6 +18,7 @@ import * as repo from '@/lib/repo';
 import { rpc, onTabCommand } from '@/lib/rpc';
 import { HIGHLIGHT_LABELS, type Annotation, type HighlightLabel, type LibraryEntry, type Paper } from '@/lib/types';
 import { hasNotesPanel, openNotesPanel } from '@/platform/panel';
+import { annotationSig, savePdfToDrive } from '@/lib/pdfActions';
 import { useTextSelection } from '@/platform/selection';
 
 const style = document.createElement('style');
@@ -37,6 +38,9 @@ const SRC = params.get('src') ?? '';
 const parsed = parsePaperUrl(SRC);
 const PAPER_ID = params.get('paper') ?? parsed?.paperId ?? null;
 const VERSION = parsed?.arxiv?.version;
+// links can point at a highlight (&annotation=<id>) or a quoted passage (&find=<text>)
+const JUMP_TO = params.get('annotation');
+const FIND = params.get('find');
 const WEB = isWebApp();
 
 function openOriginal() {
@@ -49,6 +53,22 @@ function openOriginal() {
 const PaperDetail = lazy(() => import('@/components/PaperDetail').then((m) => ({ default: m.PaperDetail })));
 
 const toRect = (r: DOMRect): Rect => ({ left: r.left, top: r.top, width: r.width, height: r.height });
+
+/** The paper's PDF from Google Drive, when it was saved there and Drive is connected. */
+async function driveCopy(): Promise<Uint8Array | null> {
+  if (!PAPER_ID) return null;
+  try {
+    const p = await repo.getPaper(PAPER_ID);
+    const e = p && (await repo.getEntry(p.id));
+    if (!e?.drivePdf) return null;
+    const [{ getDriveAccount }, { downloadFile }] = await Promise.all([import('@/lib/drive/auth'), import('@/lib/drive/api')]);
+    if (!(await getDriveAccount())) return null;
+    return new Uint8Array(await downloadFile(e.drivePdf.fileId));
+  } catch (err) {
+    console.warn('[archive] no Drive copy', err);
+    return null;
+  }
+}
 
 function MenuItem({ icon, children, onClick, active }: { icon: string; children: ReactNode; onClick: () => void; active?: boolean }) {
   return (
@@ -81,6 +101,8 @@ function App() {
   const [menu, setMenu] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const pending = useRef(0);
+  // the PDF as downloaded (no highlights in it), for refreshing the copy in Google Drive
+  const cleanBytes = useRef<Uint8Array | null>(null);
 
   const showToast = (t: string) => {
     setToast(t);
@@ -100,7 +122,17 @@ function App() {
     let cancelled = false;
     (async () => {
       try {
-        const d = await loadPdf(SRC, (l, t) => setProgress(l / t));
+        let data: Uint8Array;
+        try {
+          data = await fetchPdfData(SRC, (l, t) => setProgress(l / t));
+          cleanBytes.current = data.slice();
+        } catch (e) {
+          // e.g. OpenReview in the web app: open the copy saved in Google Drive instead, if there is one
+          const fromDrive = await driveCopy();
+          if (!fromDrive) throw e;
+          data = fromDrive;
+        }
+        const d = await openPdf(data);
         if (cancelled) return;
         const texts = await pageTexts(d);
         const { viewer: v, eventBus, linkService } = await createViewer(containerRef.current!, viewerRef.current!);
@@ -189,6 +221,40 @@ function App() {
     annotator.setAnnotations(annotations);
     if (paper) rpc.reportAnchors(paper.id, annotator.orphanIds).catch(() => {});
   }, [annotator, annotations, paper?.id]);
+
+  // keep the copy in Google Drive up to date with your highlights (when it was saved there)
+  useEffect(() => {
+    const drive = entry?.drivePdf;
+    if (!paper || !drive || !settings.driveAnnotatedPdfs || !cleanBytes.current) return;
+    if (annotationSig(annotations) === (drive.annSig ?? '')) return;
+    let done = false;
+    const run = () => {
+      if (done || !cleanBytes.current) return;
+      done = true;
+      savePdfToDrive(paper, { bytes: cleanBytes.current.slice(), annotated: true }).catch((e) => console.warn('[archive] Drive update failed', e));
+    };
+    const t = setTimeout(run, 30_000);
+    const onHide = () => document.visibilityState === 'hidden' && run();
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('visibilitychange', onHide);
+    };
+  }, [paper, entry?.drivePdf?.fileId, entry?.drivePdf?.annSig, settings.driveAnnotatedPdfs, annotations]);
+
+  // jump to the highlight or passage the link points at, once the PDF and its highlights are in
+  const jumped = useRef(false);
+  useEffect(() => {
+    if (jumped.current || !annotator) return;
+    if (JUMP_TO) {
+      if (!annotations.some((a) => a.id === JUMP_TO)) return;
+      jumped.current = true;
+      setTimeout(() => annotator.scrollTo(JUMP_TO), 200);
+    } else if (FIND) {
+      jumped.current = true;
+      setTimeout(() => annotator.showQuote(FIND), 200);
+    }
+  }, [annotator, annotations]);
 
   // full text for AI, once the paper is saved
   const pushed = useRef(false);

@@ -10,13 +10,16 @@ import { isFirefox, isWebApp } from '@/lib/platform';
 /** Data that leaves the browser when AI features are on (declared optional in the Firefox manifest). */
 export const AI_DATA_COLLECTION = ['websiteContent', 'authenticationInfo'] as const;
 
-/** Match patterns for every site Archive reads, normalized to `scheme://host/*`. */
+/**
+ * The manifest's host permissions, normalized to `scheme://host/*`. Only declared
+ * host permissions can be requested, so the Firefox manifest also lists the
+ * content scripts' extra host (www.arxiv.org).
+ */
 export function hostOrigins(): string[] {
   if (isWebApp()) return [];
   const m = chrome.runtime.getManifest() as chrome.runtime.ManifestV3;
-  const patterns = [...(m.host_permissions ?? []), ...(m.content_scripts ?? []).flatMap((c) => c.matches ?? [])];
   const out = new Set<string>();
-  for (const p of patterns) {
+  for (const p of m.host_permissions ?? []) {
     const i = p.indexOf('://');
     if (i < 0) continue;
     const slash = p.indexOf('/', i + 3);

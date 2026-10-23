@@ -74,6 +74,11 @@ export function enablePinchZoom(container: HTMLElement, viewer: Viewer, min = 0.
 }
 
 export async function loadPdf(src: string, onProgress?: (loaded: number, total: number) => void): Promise<PDFDocumentProxy> {
+  return openPdf(await fetchPdfData(src, onProgress));
+}
+
+/** Download a PDF (with progress), checking that it really is one. */
+export async function fetchPdfData(src: string, onProgress?: (loaded: number, total: number) => void): Promise<Uint8Array> {
   // send OpenReview cookies so PDFs visible to the signed-in user (e.g. during review) load too
   const res = await fetch(src, { credentials: /^https:\/\/openreview\.net\//.test(src) ? 'include' : 'same-origin' });
   if (res.status === 401 || res.status === 403) throw Object.assign(new Error('This PDF needs you to be signed in.'), { status: res.status });
@@ -102,6 +107,11 @@ export async function loadPdf(src: string, onProgress?: (loaded: number, total: 
   }
   const head = new TextDecoder().decode(data.slice(0, 1024));
   if (!head.includes('%PDF')) throw new Error("That link didn't return a PDF.");
+  return data;
+}
+
+/** Open PDF bytes with pdf.js. pdf.js takes ownership of the buffer, so pass a copy if you need it later. */
+export function openPdf(data: Uint8Array): Promise<PDFDocumentProxy> {
   return pdfjsLib.getDocument({
     data,
     cMapUrl: chrome.runtime.getURL('/pdfjs/cmaps/'),
@@ -155,6 +165,9 @@ export async function readableText(doc: PDFDocumentProxy): Promise<string> {
   }
   return parts.join('\n\n');
 }
+
+/** The passage a link asked to show (not an annotation; it fades after a few seconds). */
+const FLASH_ID = 'mg-find';
 
 interface AnchorInfo {
   start: number;
@@ -235,7 +248,7 @@ export class PdfAnnotator {
   setAnnotations(annotations: Annotation[]) {
     const wanted = new Map(annotations.filter((a) => a.target.selector && !a.deletedAt).map((a) => [a.id, a] as const));
     for (const id of [...this.anchors.keys()]) {
-      if (!wanted.has(id)) {
+      if (!wanted.has(id) && id !== FLASH_ID) {
         this.anchors.delete(id);
         this.removeRendered(id);
       }
@@ -410,6 +423,19 @@ export class PdfAnnotator {
     const timer = setInterval(() => {
       if (pulse() || ++tries > 30) clearInterval(timer);
     }, 150);
+    return true;
+  }
+
+  /** Scroll to a quoted passage and flash it for a few seconds (links from "Ask your library"). */
+  showQuote(exact: string): boolean {
+    const r = anchorQuote(this.docText, { type: 'TextQuoteSelector', exact, prefix: '', suffix: '' }, null, this.normalized());
+    if (!r) return false;
+    const id = FLASH_ID;
+    this.removeOne(id);
+    const flash = { id, body: [{ type: 'TextualBody', purpose: 'tagging', value: 'plain' }], target: { source: '', selector: [] } } as unknown as Annotation;
+    this.addAt(id, r.start, r.end, flash);
+    this.scrollTo(id);
+    setTimeout(() => this.removeOne(id), 4000);
     return true;
   }
 

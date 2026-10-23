@@ -8,6 +8,7 @@ import { aiAvailable, getSettings } from '../settings';
 import type { Annotation, FullText, LibraryEntry, Paper, Project, ReadingStatus, TabContext } from '../types';
 import { lookupCitation, saveFromS2 } from '../citations';
 import { refreshFeed, saveFeedItem } from '../feed';
+import { autoSavePdf } from './services';
 
 export interface RpcCtx {
   tabId?: number;
@@ -32,6 +33,7 @@ export const handlers = {
   async savePaper(_ctx: RpcCtx, input: SaveInput) {
     const res = await savePaper(input);
     void enqueueEnrich(res.paper.id);
+    if (res.created) void autoSavePdf(res.paper.id);
     return { paperId: res.paper.id, created: res.created };
   },
 
@@ -70,6 +72,7 @@ export const handlers = {
       if (res.created) {
         await repo.updateEntry(paperId, { status: 'reading', statusSetBy: 'auto' });
         void enqueueEnrich(paperId);
+        void autoSavePdf(paperId);
       }
     } else paperId = existing.id;
     return repo.createAnnotation({ ...input, paperId, target: { ...input.target, source: paperId } });
@@ -185,6 +188,7 @@ export const handlers = {
   async saveFeedItem(_ctx: RpcCtx, id: string) {
     const paperId = await saveFeedItem(id);
     void enqueueEnrich(paperId);
+    void autoSavePdf(paperId);
     return paperId;
   },
 

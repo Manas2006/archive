@@ -5,17 +5,27 @@ import * as repo from './repo';
 import { getSettings } from './settings';
 import { fetchPdfBytes, loadPdfjs } from './pdfBytes';
 import { nowIso } from './ids';
-import type { Paper } from './types';
+import type { Annotation, Paper } from './types';
+
+/** Changes whenever a highlight or note is added, edited or removed. */
+export function annotationSig(annotations: Annotation[]): string {
+  return annotations
+    .filter((a) => !a.deletedAt)
+    .map((a) => `${a.id}@${a.updatedAt}`)
+    .sort()
+    .join('|');
+}
 
 /** The paper's PDF, with highlights and notes embedded unless `annotated` is false. */
-export async function exportPdf(paper: Paper, opts: { annotated?: boolean; bytes?: Uint8Array } = {}): Promise<{ bytes: Uint8Array; placed: number; missed: number; locked?: boolean }> {
+export async function exportPdf(paper: Paper, opts: { annotated?: boolean; bytes?: Uint8Array } = {}): Promise<{ bytes: Uint8Array; placed: number; missed: number; locked?: boolean; sig: string }> {
   const original = opts.bytes ?? (await fetchPdfBytes(paper));
-  if (opts.annotated === false) return { bytes: original, placed: 0, missed: 0 };
+  if (opts.annotated === false) return { bytes: original, placed: 0, missed: 0, sig: '' };
   const annotations = await repo.listAnnotations(paper.id);
-  if (!annotations.length) return { bytes: original, placed: 0, missed: 0 };
+  const sig = annotationSig(annotations);
+  if (!annotations.length) return { bytes: original, placed: 0, missed: 0, sig };
   const [{ annotatePdf }, pdfjs, s] = await Promise.all([import('./pdfExport'), loadPdfjs(), getSettings()]);
   const res = await annotatePdf(original, annotations, { pdfjs, author: s.displayName || undefined, title: paper.title });
-  return { bytes: res.bytes, placed: res.placed, missed: res.missed.length, locked: res.reason === 'encrypted' };
+  return { bytes: res.bytes, placed: res.placed, missed: res.missed.length, locked: res.reason === 'encrypted', sig };
 }
 
 export function downloadBytes(name: string, bytes: Uint8Array, mime = 'application/pdf') {
@@ -48,7 +58,7 @@ export async function savePdfToDrive(paper: Paper, opts: { bytes?: Uint8Array; a
   const { savePaperPdf } = await import('./drive/files');
   const res = await exportPdf(paper, { annotated, bytes: opts.bytes });
   const file = await savePaperPdf(paper, res.bytes, { folder: await driveFolderFor(paper.id) });
-  await repo.updateEntry(paper.id, { drivePdf: { fileId: file.id, savedAt: nowIso(), annotated: annotated && res.placed > 0 } });
+  await repo.updateEntry(paper.id, { drivePdf: { fileId: file.id, savedAt: nowIso(), annotated: annotated && res.placed > 0, annSig: annotated ? res.sig : undefined } });
   return { fileId: file.id, missed: res.missed, locked: res.locked };
 }
 

@@ -341,7 +341,11 @@ function requestPermissions(): Promise<boolean> {
   // If a browser refuses these as optional permissions, they must be required ones in its build.
   const fallback = () => !!ext()?.identity?.launchWebAuthFlow;
   try {
-    return Promise.resolve(perms.request(DRIVE_PERMISSIONS)).then((ok: unknown) => !!ok || fallback(), fallback);
+    // Firefox: identity is a required permission there (it can't be optional), and PDFs going to Drive
+    // count as website content under its data-collection consent, which is asked for here
+    const req = isFirefox() ? { origins: DRIVE_PERMISSIONS.origins, data_collection: ['websiteContent'] } : DRIVE_PERMISSIONS;
+    // a "no" in Firefox's consent prompt is an answer; elsewhere a refusal can mean the permissions are required ones
+    return Promise.resolve(perms.request(req)).then((ok: unknown) => !!ok || (!isFirefox() && fallback()), fallback);
   } catch {
     return Promise.resolve(fallback());
   }

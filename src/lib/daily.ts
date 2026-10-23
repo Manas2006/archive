@@ -1,6 +1,7 @@
 // Daily background check: venue upgrades, embeddings and references for new
 // papers, topic re-clustering, inbox priority, and the "For you" feed.
 
+import { isWebApp } from './platform';
 import * as repo from './repo';
 import { applyS2, rescoreLibrary, updatePriorities } from './enrich';
 import { refreshFeed } from './feed';
@@ -99,7 +100,8 @@ export async function runDaily(opts: { force?: boolean; onUpgrade?: (u: VenueUpg
   }
 
   // 3. OpenReview papers still under review: refresh scores/decision
-  for (const p of papers.filter((x) => x.openreviewId && x.venueStatus === 'under-review').slice(0, 10)) {
+  // (the web app can't reach OpenReview: it doesn't allow cross-site requests)
+  for (const p of isWebApp() ? [] : papers.filter((x) => x.openreviewId && x.venueStatus === 'under-review').slice(0, 10)) {
     const review = await fetchReviews(p.openreviewId!, p.venue ?? 'OpenReview').catch(() => null);
     if (review && (review.decision !== p.review?.decision || review.scores.length !== p.review?.scores.length)) {
       await repo.updatePaper(p.id, { review: { ...review, summary: p.review?.summary } });

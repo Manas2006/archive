@@ -161,7 +161,9 @@ try {
   assert(orPaper.venue === 'ICLR 2025' && orPaper.venueStatus === 'accepted', `OpenReview venue ${orPaper.venue}`);
   assert(orPaper.review.avgRating === 6.33 && orPaper.review.decision === 'Accept (poster)', 'scores averaged and decision parsed');
   assert(orPaper.bibtex.startsWith('@inproceedings{hopper2025sparse,') && orPaper.bibtex.includes('Thirteenth International Conference'), 'OpenReview bibtex normalized');
-  assert(orPaper.aliases.includes('arxiv:2403.00003'), 'arXiv alias linked through Semantic Scholar');
+  // Semantic Scholar calls are spaced out, so the alias can land a moment after the reviews
+  const linked = await waitFor(async () => ((await idb(extPage, 'papers', 'openreview:ORabc123'))?.aliases.includes('arxiv:2403.00003') ? true : null), { label: 'alias', timeout: 15000 });
+  assert(linked, 'arXiv alias linked through Semantic Scholar');
 
   console.log('\n# Library');
   const lib = await context.newPage();

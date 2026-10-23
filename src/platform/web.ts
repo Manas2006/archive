@@ -10,11 +10,14 @@ import { lastDailyReport, runDaily } from '@/lib/daily';
 import { parseArxivId, parsePaperUrl } from '@/lib/ids';
 import { rpc } from '@/lib/rpc';
 import type { VenueUpgrade } from '@/lib/venue';
+import { FEED_NOTIFICATION_ID } from '@/lib/daily';
+import { startServices } from '@/lib/bg/services';
 
 const DAILY_EVERY_MS = 20 * 60 * 60 * 1000;
 const BASE = import.meta.env.BASE_URL || '/';
 
 registerBackground({ platform: 'web' });
+startServices();
 
 function notifyUpgrade(u: VenueUpgrade) {
   void chrome.notifications.create(`venue:${u.paperId}`, {
@@ -27,6 +30,7 @@ function notifyUpgrade(u: VenueUpgrade) {
 setVenueNotifier(notifyUpgrade);
 chrome.notifications.onClicked.addListener((id: string) => {
   if (id.startsWith('venue:')) location.assign(chrome.runtime.getURL(`/library.html#paper=${encodeURIComponent(id.slice('venue:'.length))}`));
+  if (id === FEED_NOTIFICATION_ID) location.assign(chrome.runtime.getURL('/library.html#view=foryou'));
 });
 
 // ---- background jobs while the app is open ----

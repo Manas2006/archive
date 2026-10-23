@@ -6,6 +6,7 @@ import * as repo from '@/lib/repo';
 import { rpc } from '@/lib/rpc';
 import { readerUrl } from '@/lib/ids';
 import { lastDailyReport } from '@/lib/daily';
+import { isWebApp } from '@/lib/platform';
 import type { FeedItem, FeedReason, Project } from '@/lib/types';
 import { go, type LibraryData } from './shared';
 
@@ -62,7 +63,7 @@ function FeedCard({ it, projects, onSaved }: { it: FeedItem; projects: Map<strin
           {busy ? <Spinner /> : <Icon name="bookmark" size={14} />} Save
         </button>
         {pdf && (
-          <a className="mg-btn" href={readerUrl(pdf, it.id)} target="_blank" rel="noreferrer">
+          <a className="mg-btn" href={readerUrl(pdf, it.id)} target={isWebApp() ? undefined : '_blank'} rel="noreferrer">
             <Icon name="book" size={14} /> Read
           </a>
         )}

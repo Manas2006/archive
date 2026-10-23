@@ -119,7 +119,7 @@ export interface LibraryEntry extends SyncMeta {
   priorityReasons: string[];
   factoidFigure?: { kind: 'url'; url: string } | { kind: 'attachment'; id: string };
   /** The paper's PDF saved in Google Drive (synced, so other devices can open it from Drive). */
-  drivePdf?: { fileId: string; savedAt: string; annotated: boolean };
+  drivePdf?: { fileId: string; savedAt: string; annotated: boolean; annSig?: string };
 }
 
 export interface Project extends SyncMeta {

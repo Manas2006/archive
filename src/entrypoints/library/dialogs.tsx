@@ -165,7 +165,7 @@ export function AddPaper({ onAdded, className = '' }: { onAdded: (id: string) =>
   const [err, setErr] = useState<string | null>(null);
   return (
     <form
-      className={`flex items-center gap-1.5 ${className}`}
+      className={`flex flex-wrap items-center gap-1.5 ${className}`}
       onSubmit={async (e) => {
         e.preventDefault();
         const s = v.trim();
@@ -183,11 +183,11 @@ export function AddPaper({ onAdded, className = '' }: { onAdded: (id: string) =>
         }
       }}
     >
-      <input className="mg-input min-w-0 py-1 md:w-64" value={v} onChange={(e) => setV(e.target.value)} placeholder="Add by arXiv ID or URL" title={err ?? undefined} inputMode="url" />
+      <input className="mg-input min-w-0 py-1 md:w-48 xl:w-64" value={v} onChange={(e) => setV(e.target.value)} placeholder="Add by arXiv ID or URL" title={err ?? undefined} inputMode="url" />
       <button className="mg-btn shrink-0" type="submit" disabled={busy || !v.trim()} aria-label="Add paper">
         {busy ? <Spinner /> : <Icon name="plus" size={14} />}
       </button>
-      {err && <span className="max-w-[200px] truncate text-xs text-rose-700" title={err}>{err}</span>}
+      {err && <span className="w-full max-w-sm text-xs text-rose-700">{err}</span>}
     </form>
   );
 }

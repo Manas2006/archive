@@ -7,6 +7,7 @@ import { bibFile, download } from '@/lib/exports';
 import { citeText } from '@/lib/cite';
 import { READING_STATUSES, type Project, type ReadingStatus, type Topic } from '@/lib/types';
 import { useIsNarrow } from '@/hooks/useMediaQuery';
+import { isWebApp } from '@/lib/platform';
 import { authorMatches, slug, type LibraryData, type Row, type View } from './shared';
 
 type ColId = 'title' | 'year' | 'venue' | 'status' | 'projects' | 'topic' | 'task' | 'benchmarks' | 'models' | 'metrics' | 'result' | 'highlights' | 'progress' | 'priority' | 'added' | 'citekey';
@@ -358,7 +359,9 @@ export function ListView({
           </div>
         ) : !rows.length ? (
           <EmptyState icon="library" title="Your library is empty">
-            Open a paper on arXiv or OpenReview and press Alt+Shift+S, add one by arXiv ID above, or import from Zotero.
+            {isWebApp()
+              ? 'Add a paper by pasting its arXiv link or ID above, import from Zotero, or connect Google Drive in Settings to bring in the library from your computer.'
+              : 'Open a paper on arXiv or OpenReview and press Alt+Shift+S, add one by arXiv ID above, or import from Zotero.'}
           </EmptyState>
         ) : !filtered.length ? (
           <EmptyState icon="search" title={query ? 'No matches' : 'Nothing here yet'}>

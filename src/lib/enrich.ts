@@ -2,6 +2,7 @@
 // field extraction, project relevance, topic and inbox priority. Runs in the
 // background from a persisted queue so a service-worker restart doesn't lose work.
 
+import { isWebApp } from './platform';
 import { aiProjectScores, extractFields, summarizeReviews } from './ai/features';
 import { mergeAuthorIds } from './follows';
 import * as repo from './repo';
@@ -190,7 +191,7 @@ export async function enrichPaper(paperId: string): Promise<void> {
   const s = await getSettings();
 
   // 1. OpenReview scores and decision
-  if (paper.openreviewId && !paper.review) {
+  if (paper.openreviewId && !paper.review && !isWebApp()) {
     const review = await fetchReviews(paper.openreviewId, paper.venue ?? 'OpenReview').catch(() => null);
     if (review) paper = (await repo.updatePaper(paper.id, { review })) ?? paper;
   }

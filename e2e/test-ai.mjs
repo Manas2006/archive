@@ -68,7 +68,8 @@ try {
   assert(call.model === 'claude-sonnet-5-5', 'explain uses the reading model');
   assert(call.system[1].cache_control?.type === 'ephemeral' && call.system[1].text.includes('Full text:'), 'paper full text sent once with prompt caching');
   assert(await html.locator('math').count() > 0, 'math in the answer renders as MathML');
-  // follow-up
+  // follow-up (once the first answer has finished streaming)
+  await html.locator('button[title="Send"]').waitFor({ timeout: 10000 });
   await html.fill('textarea[placeholder="Ask a follow-up…"]', 'And what is k?');
   await html.keyboard.press('Enter');
   await waitFor(() => state.claudeCalls.filter((c) => c.stream).length >= 2, { label: 'follow-up call' });
@@ -97,7 +98,7 @@ try {
   await lib.goto(ext('library.html#view=all'));
   await addPaper(lib, '2402.00002');
   const p2 = await waitFor(async () => (await idb(opts, 'papers', 'arxiv:2402.00002'))?.extracted ?? null, { label: 'extraction', timeout: 15000 });
-  assert(p2.task === 'long-context retrieval' && p2.benchmarks.includes('NeedleBench') && p2.source === 'ai', 'fields extracted with the fast model');
+  assert(p2.task === 'mechanistic interpretability' && p2.benchmarks.includes('Needle-in-a-Haystack') && p2.source === 'ai', 'fields extracted with the fast model');
   assert(state.claudeCalls.some((c) => c.model === 'claude-haiku-5-5' && c.messages[0].content.includes('Return JSON')), 'extraction used Haiku');
   const or = await context.newPage();
   await or.goto('https://openreview.net/forum?id=ORabc123');

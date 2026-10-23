@@ -29,8 +29,8 @@ export default defineConfig({
     return {
       name: 'Archive for Papers',
       description:
-        'Save, annotate and organize research papers on arXiv and OpenReview. Optional AI features with your own Claude API key.',
-      version: '0.2.0',
+        'Read, highlight, sort and cite papers from arXiv and OpenReview. Syncs to your phone and iPad. Optional AI with your own Claude key.',
+      version: '0.3.0',
       permissions: [
         'storage',
         'unlimitedStorage',
@@ -40,7 +40,13 @@ export default defineConfig({
         'alarms',
         'notifications',
         'clipboardWrite',
+        // Google sign-in for the optional Drive features. Chrome asks for it only when you click
+        // Connect; Firefox doesn't accept it as optional, and it shows no install warning there.
+        ...(firefox ? ['identity'] : []),
       ],
+      ...(firefox ? {} : { optional_permissions: ['identity'] }),
+      // The Drive API allows cross-origin requests, so these are only requested on Connect, to be safe.
+      optional_host_permissions: ['https://www.googleapis.com/*', 'https://oauth2.googleapis.com/*'],
       host_permissions: [
         'https://arxiv.org/*',
         'https://export.arxiv.org/*',
@@ -50,6 +56,8 @@ export default defineConfig({
         'https://api.semanticscholar.org/*',
         'https://dblp.org/*',
         'https://api.anthropic.com/*',
+        // Firefox lets people grant or revoke hosts one by one; the content script also runs here
+        ...(firefox ? ['https://www.arxiv.org/*'] : []),
       ],
       action: { default_title: 'Archive' },
       content_security_policy: {
@@ -77,10 +85,12 @@ export default defineConfig({
             // 140 is the first release with the data-collection consent below (older releases reject the key);
             // MV3 (109), storage.session (115) and sidebar_action all predate it
             strict_min_version: '140.0',
-            // Nothing is collected for the developer. Page text and the person's own Claude API key go to
-            // Anthropic only when they turn on the AI features, so those are optional and asked for then.
+            // Nothing goes to the developer. The ids and titles of papers you save go to Semantic Scholar,
+            // DBLP and OpenReview to look them up (browsing activity). Page text and your own Claude API key
+            // go to Anthropic only when you turn on AI, and PDFs go to your Google Drive only when you
+            // connect it, so those are optional and asked for at that moment.
             data_collection_permissions: {
-              required: ['none'],
+              required: ['browsingActivity'],
               optional: ['websiteContent', 'authenticationInfo'],
             },
           },

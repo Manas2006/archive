@@ -10,6 +10,10 @@ import type { TabContext } from '@/lib/types';
 import type { VenueUpgrade } from '@/lib/venue';
 import { getApiKey } from '@/lib/secrets';
 import { openNotesPanel } from '@/platform/panel';
+import { hasHostPermissions, onHostPermissionsChanged } from '@/platform/permissions';
+import { isFirefox } from '@/lib/platform';
+import { periodicDriveSync, startServices } from '@/lib/bg/services';
+import { FEED_NOTIFICATION_ID } from '@/lib/daily';
 
 // Firefox for Android has no context menus, commands or notifications, and only
 // Chrome has chrome.sidePanel, so every one of those is optional here.
@@ -18,6 +22,7 @@ import { openNotesPanel } from '@/platform/panel';
 async function ensureAlarms() {
   if (!(await chrome.alarms.get('mg-daily'))) chrome.alarms.create('mg-daily', { periodInMinutes: 24 * 60, delayInMinutes: 2 });
   if (!(await chrome.alarms.get('mg-queue'))) chrome.alarms.create('mg-queue', { periodInMinutes: 5 });
+  if (!(await chrome.alarms.get('mg-sync'))) chrome.alarms.create('mg-sync', { periodInMinutes: 15 });
 }
 
 const PAPER_PATTERNS = [
@@ -54,6 +59,18 @@ async function badge(tabId: number, text: string, color?: string) {
   }
 }
 
+/** Firefox lets people decline or revoke host access: mark the toolbar button so they find the popup's "Grant access". */
+async function flagHostAccess() {
+  const ok = await hasHostPermissions();
+  try {
+    await chrome.action.setBadgeText({ text: ok ? '' : '!' });
+    if (!ok) await chrome.action.setBadgeBackgroundColor({ color: '#b45309' });
+    await chrome.action.setTitle({ title: ok ? 'Archive' : 'Archive needs access to arXiv and OpenReview' });
+  } catch {
+    /* no toolbar button (Firefox for Android) */
+  }
+}
+
 async function saveTab(tab: chrome.tabs.Tab | undefined) {
   if (!tab?.id) return;
   const ctx = await tabContext(tab.id);
@@ -81,6 +98,13 @@ export default defineBackground({
 
     // ---- RPC and the AI port (shared with the web app) ----
     registerBackground({ platform: 'extension' });
+    // follow migration, Drive sync, project .bib files in Drive
+    startServices();
+
+    if (isFirefox()) {
+      void flagHostAccess();
+      onHostPermissionsChanged(() => void flagHostAccess());
+    }
 
     // ---- install / startup ----
     chrome.runtime.onInstalled.addListener(async (details) => {
@@ -112,6 +136,7 @@ export default defineBackground({
     chrome.alarms.onAlarm.addListener((alarm) => {
       if (alarm.name === 'mg-daily') void runDaily({ onUpgrade: notifyUpgrade });
       if (alarm.name === 'mg-queue') void drainQueue();
+      if (alarm.name === 'mg-sync') void periodicDriveSync().catch(() => {});
     });
 
     // ---- commands and menus ----
@@ -164,6 +189,10 @@ export default defineBackground({
       if (id.startsWith('venue:')) {
         const paperId = id.slice('venue:'.length);
         chrome.tabs.create({ url: chrome.runtime.getURL(`/library.html#paper=${encodeURIComponent(paperId)}`) });
+      }
+      if (id === FEED_NOTIFICATION_ID) {
+        chrome.tabs.create({ url: chrome.runtime.getURL('/library.html#view=foryou') });
+        chrome.notifications.clear(id).catch?.(() => {});
       }
     });
   },
