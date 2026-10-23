@@ -3,6 +3,7 @@
 // background from a persisted queue so a service-worker restart doesn't lose work.
 
 import { aiProjectScores, extractFields, summarizeReviews } from './ai/features';
+import { mergeAuthorIds } from './follows';
 import * as repo from './repo';
 import { aiAvailable, getSettings } from './settings';
 import { fetchReviews } from './sources/openreview';
@@ -105,7 +106,13 @@ export async function applyS2(paper: Paper, s2: S2Paper): Promise<Paper> {
   };
   if (!paper.arxivId && s2.externalIds?.ArXiv) patch.arxivId = s2.externalIds.ArXiv;
   if (!paper.abstract && s2.abstract) patch.abstract = s2.abstract;
-  return (await repo.updatePaper(paper.id, patch)) ?? paper;
+  // S2 author ids (used to follow authors), merged into the authors as stored now
+  return (
+    (await repo.updatePaper(paper.id, (cur) => {
+      const authors = mergeAuthorIds(cur.authors, s2.authors ?? []);
+      return authors ? { ...patch, authors } : patch;
+    })) ?? paper
+  );
 }
 
 export async function enrichS2(paper: Paper, opts: { references?: boolean; embedding?: boolean } = {}): Promise<{ paper: Paper; s2: S2Paper | null }> {
@@ -157,7 +164,7 @@ export async function updateRelevance(paperId: string): Promise<void> {
 }
 
 export async function updatePriorities(): Promise<void> {
-  const s = await getSettings();
+  const follows = await repo.listFollows();
   const entries = await repo.listEntries();
   const papers = await repo.getPapers(entries.map((e) => e.paperId));
   const byId = new Map(papers.map((p) => [p.id, p] as const));
@@ -170,7 +177,7 @@ export async function updatePriorities(): Promise<void> {
   for (const e of entries) {
     const p = byId.get(e.paperId);
     if (!p) continue;
-    const { priority, reasons } = computePriority({ entry: e, paper: p, projects, libraryIds, followedAuthors: s.followedAuthors });
+    const { priority, reasons } = computePriority({ entry: e, paper: p, projects, libraryIds, follows });
     if (priority !== e.priority || reasons.join('|') !== e.priorityReasons.join('|')) {
       await repo.updateEntry(e.paperId, { priority, priorityReasons: reasons });
     }

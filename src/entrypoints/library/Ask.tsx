@@ -152,7 +152,7 @@ export function AskView({ data }: { data: LibraryData | undefined }) {
                     </div>
                     {s.quote && <blockquote className="border-l-2 border-stone-300 pl-2 text-[13px] italic leading-relaxed text-stone-600 dark:border-stone-600 dark:text-stone-300">{s.quote}</blockquote>}
                     {pdf && s.kind !== 'abstract' && (
-                      <a className="self-start text-xs text-accent-700 hover:underline dark:text-accent-300" href={`${readerUrl(pdf, s.paperId)}&find=${encodeURIComponent(s.quote.slice(0, 160))}`} target="_blank" rel="noreferrer">
+                      <a className="self-start text-xs text-accent-700 hover:underline dark:text-accent-300" href={`${readerUrl(pdf, s.paperId)}&${s.annotationId ? `annotation=${encodeURIComponent(s.annotationId)}` : `find=${encodeURIComponent((s.target?.quote.exact ?? s.quote).replace(/\s+/g, ' ').slice(0, 300))}`}`} target="_blank" rel="noreferrer">
                         Read in context
                       </a>
                     )}

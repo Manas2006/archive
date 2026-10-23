@@ -1,19 +1,18 @@
 // Inbox priority: project relevance, whether the paper cites things you've
 // saved, and whether it's by authors you follow.
 
-import type { LibraryEntry, Paper, Project } from '../types';
+import { isFollowed } from '../follows';
+import type { Follow, LibraryEntry, Paper, Project } from '../types';
 
 export interface PriorityInput {
   entry: LibraryEntry;
   paper: Paper;
   projects: Map<string, Project>;
   libraryIds: Set<string>; // canonical ids + aliases of saved papers
-  followedAuthors: string[];
+  follows: Follow[]; // matched by S2 author id first, then by normalized name
 }
 
-const norm = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z ]/g, '').trim();
-
-export function computePriority({ entry, paper, projects, libraryIds, followedAuthors }: PriorityInput): { priority: number; reasons: string[] } {
+export function computePriority({ entry, paper, projects, libraryIds, follows }: PriorityInput): { priority: number; reasons: string[] } {
   const reasons: string[] = [];
   // project relevance
   let rel = 0;
@@ -37,8 +36,7 @@ export function computePriority({ entry, paper, projects, libraryIds, followedAu
   if (cited) reasons.push(`Cites ${cited} paper${cited > 1 ? 's' : ''} you saved`);
 
   // followed authors
-  const followed = followedAuthors.map(norm).filter(Boolean);
-  const hit = paper.authors.find((a) => followed.includes(norm(a.name)));
+  const hit = follows.length ? paper.authors.find((a) => isFollowed(a, follows)) : undefined;
   if (hit) reasons.push(`By ${hit.name}`);
 
   const ageDays = (Date.now() - new Date(entry.createdAt).getTime()) / 86_400_000;

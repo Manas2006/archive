@@ -434,29 +434,46 @@ export function search(index: LibraryIndex, query: string | string[], opts: Sear
 // Quotes
 // ---------------------------------------------------------------------------
 
+function wordStartAfter(text: string, from: number, limit: number): number | null {
+  for (let i = Math.max(from, 1); i < limit; i++) if (isSpace(text[i - 1]) && !isSpace(text[i])) return i;
+  return null;
+}
+
 /**
- * The window of `text` (at most `maxChars`, starting at a sentence start and
- * ending at a sentence end or word boundary) that shares the most terms with
- * `query`. Score 0 means nothing matched; the window is then the start of the text.
+ * The window of `text` (at most `maxChars`, ending at a sentence end or word
+ * boundary) that shares the most terms with `query`. Windows open at a sentence
+ * start, or at a word start inside a sentence too long to fit, and only where
+ * that opening sentence itself matches, so the quote leads with the evidence.
+ * Score 0 means nothing matched; the window is then the start of the text.
  */
 export function bestWindow(text: string, query: string | string[], maxChars = 300): { start: number; end: number; score: number } {
   const want = new Map<string, number>();
   for (const q of Array.isArray(query) ? query : [query]) for (const t of tokenize(q)) want.set(t, t.includes(' ') ? 1.5 : 1);
-  const starts = [skipSpace(text, 0), ...sentenceStarts(text)];
+  const sentences = [skipSpace(text, 0), ...sentenceStarts(text)];
   const window = (s: number) => {
     const limit = s + maxChars;
     if (limit >= text.length) return trimEndAt(text, s, text.length);
     // end at a sentence end when that keeps at least half the room, else at a word boundary
-    const e = lastIn(starts, s + maxChars / 2, limit) ?? wordStartBefore(text, s + 1, limit + 1) ?? limit;
+    const e = lastIn(sentences, s + maxChars / 2, limit) ?? wordStartBefore(text, s + 1, limit + 1) ?? limit;
     return trimEndAt(text, s, e);
   };
-  let best = { start: starts[0], end: window(starts[0]), score: 0 };
-  if (!want.size) return best;
-  for (const s of starts) {
-    const e = window(s);
+  const scoreOf = (a: number, b: number) => {
     let score = 0;
-    for (const t of new Set(tokenize(text.slice(s, e)))) score += want.get(t) ?? 0;
-    if (score > best.score) best = { start: s, end: e, score };
+    for (const t of new Set(tokenize(text.slice(a, b)))) score += want.get(t) ?? 0;
+    return score;
+  };
+  let best = { start: sentences[0], end: window(sentences[0]), score: 0 };
+  if (!want.size) return best;
+  const step = Math.max(40, Math.floor(maxChars / 3));
+  for (let i = 0; i < sentences.length; i++) {
+    const sentenceEnd = i + 1 < sentences.length ? sentences[i + 1] : text.length;
+    const long = sentenceEnd - sentences[i] > maxChars;
+    for (let s: number | null = sentences[i]; s !== null && s < sentenceEnd; s = long ? wordStartAfter(text, s + step, sentenceEnd - 20) : null) {
+      const e = window(s);
+      if (!scoreOf(s, Math.min(e, sentenceEnd))) continue;
+      const score = scoreOf(s, e);
+      if (score > best.score) best = { start: s, end: e, score };
+    }
   }
   return best;
 }

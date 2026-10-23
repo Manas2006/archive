@@ -5,7 +5,7 @@ import { heuristicScores, decideFiling } from '@/lib/sorting/relevance';
 import { computePriority } from '@/lib/sorting/priority';
 import { shortVenue } from '@/lib/venue';
 import { factoidFromHighlights, notesMarkdown } from '@/lib/exports';
-import type { Annotation, LibraryEntry, Paper, Project } from '@/lib/types';
+import type { Annotation, Follow, LibraryEntry, Paper, Project } from '@/lib/types';
 
 const meta = { owner: 'u', visibility: 'private' as const, groupId: null, createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z', deletedAt: null };
 const paper = (id: string, title: string, abstract: string, extra: Partial<Paper> = {}): Paper => ({
@@ -68,7 +68,8 @@ describe('relevance + priority', () => {
   });
   it('prioritizes papers citing your library and by followed authors', () => {
     const p = paper('c1', 't', 'a', { s2: { paperId: 's', referenceIds: ['arxiv:a1', 'arxiv:a2'], checkedAt: '' }, authors: [{ name: 'Grace Hopper' }] });
-    const r = computePriority({ entry: entry('c1'), paper: p, projects: new Map(), libraryIds: new Set(['arxiv:a1', 'arxiv:a2']), followedAuthors: ['grace hopper'] });
+    const follows: Follow[] = [{ ...meta, id: 'name:grace hopper', name: 'grace hopper', s2AuthorId: null, lastCheckedAt: null }];
+    const r = computePriority({ entry: entry('c1'), paper: p, projects: new Map(), libraryIds: new Set(['arxiv:a1', 'arxiv:a2']), follows });
     expect(r.reasons).toEqual(['Cites 2 papers you saved', 'By Grace Hopper']);
     expect(r.priority).toBeCloseTo(0.3 * (2 / 3) + 0.2, 2);
   });

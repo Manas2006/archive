@@ -27,10 +27,28 @@ export async function fetchWithRetry(url: string, opts: FetchOpts = {}): Promise
     } catch (e) {
       clearTimeout(timer);
       lastErr = e;
+      // the caller gave up: don't retry
+      if (init.signal?.aborted) break;
+      // network errors (TypeError) are retried too: in the web app a rate-limit 429 without
+      // CORS headers reaches us as a TypeError rather than a response
       if (attempt < retries) await sleep(1000 * 2 ** attempt);
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+/**
+ * Spaces out calls to one API. Each call to the returned function waits until
+ * `gapMs` after the previous call's slot; slots are reserved in call order.
+ */
+export function spacer(): (gapMs: number) => Promise<void> {
+  let next = 0;
+  return async (gapMs: number) => {
+    const now = Date.now();
+    const at = Math.max(now, next);
+    next = at + Math.max(0, gapMs);
+    if (at > now) await sleep(at - now);
+  };
 }
 
 export async function fetchJson<T = any>(url: string, opts: FetchOpts = {}): Promise<T> {

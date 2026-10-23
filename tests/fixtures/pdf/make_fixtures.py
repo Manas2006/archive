@@ -65,6 +65,8 @@ def sample(path):
     story += [
         PageBreak(),
         Paragraph("2 Method", styles["Heading2"]),
+        # θ comes out in a separate font, so this line is several text items
+        Paragraph("Let θ denote the parameters of a pretrained transformer.", body),
         Paragraph("Filtered attention improves retrieval recall by 11.4 points at 128k tokens on NeedleBench, as shown in Table 1.", body),
         Paragraph(REPEATED, body),
         PageBreak(),

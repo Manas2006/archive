@@ -1,8 +1,9 @@
 // Daily background check: venue upgrades, embeddings and references for new
-// papers, topic re-clustering, inbox priority.
+// papers, topic re-clustering, inbox priority, and the "For you" feed.
 
 import * as repo from './repo';
 import { applyS2, rescoreLibrary, updatePriorities } from './enrich';
+import { refreshFeed } from './feed';
 import { getSettings } from './settings';
 import { fetchReviews } from './sources/openreview';
 import { canonicalFromS2, s2Batch, s2References, S2_FIELDS, toS2Id } from './sources/s2';
@@ -17,7 +18,27 @@ export interface DailyReport {
   embeddingsAdded: number;
   referencesAdded: number;
   topics: number;
+  /** New "For you" papers (absent when the feed is off, and in reports saved before v0.3). */
+  feed?: { added: number; byAuthor: number; byProject: number };
   errors: string[];
+}
+
+export const FEED_NOTIFICATION_ID = 'mg-feed';
+
+function notifyFeed(n: number) {
+  if (typeof chrome === 'undefined' || !chrome.notifications?.create) return;
+  try {
+    const p = chrome.notifications.create(FEED_NOTIFICATION_ID, {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('/icon/128.png'),
+      title: 'Archive',
+      message: `${n} new paper${n === 1 ? '' : 's'} in For you`,
+      priority: 0,
+    }) as unknown;
+    if (p && typeof (p as Promise<unknown>).catch === 'function') (p as Promise<unknown>).catch(() => {});
+  } catch {
+    /* notifications unavailable */
+  }
 }
 
 const LAST_KEY = 'lastDailyReport';
@@ -93,6 +114,18 @@ export async function runDaily(opts: { force?: boolean; onUpgrade?: (u: VenueUpg
   }
   await rescoreLibrary().catch((e) => report.errors.push(`relevance: ${(e as Error).message}`));
   await updatePriorities().catch((e) => report.errors.push(`priority: ${(e as Error).message}`));
+
+  // 5. "For you": new papers by followed authors and for each project
+  if (s.feedEnabled) {
+    try {
+      const f = await refreshFeed();
+      report.feed = { added: f.added, byAuthor: f.byAuthor, byProject: f.byProject };
+      report.errors.push(...f.errors.map((e) => `For you: ${e}`));
+      if (s.feedNotify && f.added > 0) notifyFeed(f.added);
+    } catch (e) {
+      report.errors.push(`For you: ${(e as Error).message}`);
+    }
+  }
 
   await chrome.storage.local.set({ [LAST_KEY]: report });
   return report;
