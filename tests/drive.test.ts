@@ -955,3 +955,55 @@ describe('drive sync', () => {
     expect(drive.count('list')).toBe(lists);
   });
 });
+
+describe('sync and background work', () => {
+  it("background writes on a stale device don't undo edits made on another", async () => {
+    const devA = db() as ArchiveDB;
+    await connectDrive();
+    await repo.putPaper(paperFixture('arxiv:2403.00001'));
+    await repo.ensureEntry('arxiv:2403.00001');
+    await syncNow();
+    const devB = await newDevice();
+    await connectDrive();
+    await syncNow();
+
+    // A: the user edits the cite key and BibTeX and files the paper, then syncs
+    use(devA);
+    await tick();
+    await repo.updatePaper('arxiv:2403.00001', { citeKey: 'mykey', bibtex: '@misc{mykey,}', bibtexSource: 'manual' });
+    await repo.updateEntry('arxiv:2403.00001', { status: 'read', tags: ['thesis'], willCite: true });
+    expect(await syncNow()).toMatchObject({ pushed: true });
+
+    // B, before pulling: background jobs touch the same records (they are derived writes)
+    use(devB);
+    await tick();
+    await repo.updateEntry('arxiv:2403.00001', { lastOpenedAt: new Date().toISOString(), priority: 0.9, topicId: 'topic-b' }, { derived: true });
+    await repo.updatePaper('arxiv:2403.00001', { s2: { paperId: 'x', checkedAt: new Date().toISOString() } as any }, { derived: true });
+    await syncNow();
+    // B now has A's edits, and keeps the values it computed itself
+    let e = await repo.getEntry('arxiv:2403.00001');
+    expect(e).toMatchObject({ status: 'read', tags: ['thesis'], willCite: true, topicId: 'topic-b', priority: 0.9 });
+    expect((await repo.getPaper('arxiv:2403.00001'))?.citeKey).toBe('mykey');
+
+    // A pulls again: nothing of its edits is reverted
+    use(devA);
+    await syncNow();
+    const p = await repo.getPaper('arxiv:2403.00001');
+    e = await repo.getEntry('arxiv:2403.00001');
+    expect(p).toMatchObject({ citeKey: 'mykey', bibtexSource: 'manual' });
+    expect(e).toMatchObject({ status: 'read', tags: ['thesis'], willCite: true });
+  });
+
+  it('derived writes keep updatedAt and stay out of the change log', async () => {
+    await repo.putPaper(paperFixture('arxiv:2403.00002'));
+    await repo.ensureEntry('arxiv:2403.00002');
+    const before = await repo.getEntry('arxiv:2403.00002');
+    const seq = (await db().changes.toCollection().last())?.seq;
+    await tick();
+    await repo.updateEntry('arxiv:2403.00002', { priority: 0.5 }, { derived: true });
+    const after = await repo.getEntry('arxiv:2403.00002');
+    expect(after?.updatedAt).toBe(before?.updatedAt);
+    expect(after?.priority).toBe(0.5);
+    expect((await db().changes.toCollection().last())?.seq).toBe(seq);
+  });
+});

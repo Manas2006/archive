@@ -55,13 +55,18 @@ export async function checkVenue(paper: Paper, s2: S2Paper | null): Promise<Venu
   if (!normalized) return null;
   const display = shortVenue(venueName, s2?.year ?? paper.year, s2?.publicationVenue?.alternate_names ?? []) ?? paper.venue;
   const label = display ?? 'a venue';
-  await repo.updatePaper(paper.id, {
-    bibtex: normalized,
-    bibtexSource: source,
-    venue: display,
-    venueStatus: 'accepted',
-    dblpKey: dblpKey && !isCorrKey(dblpKey) ? dblpKey : paper.dblpKey,
-  });
+  // derived: each device runs this check itself, and it must never overwrite an edit synced from another device
+  await repo.updatePaper(
+    paper.id,
+    {
+      bibtex: normalized,
+      bibtexSource: source,
+      venue: display,
+      venueStatus: 'accepted',
+      dblpKey: dblpKey && !isCorrKey(dblpKey) ? dblpKey : paper.dblpKey,
+    },
+    { derived: true },
+  );
   return { paperId: paper.id, title: paper.title, venue: label };
 }
 

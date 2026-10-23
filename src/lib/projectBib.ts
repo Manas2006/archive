@@ -32,9 +32,13 @@ export async function pushProjectBib(project: Project, opts: { force?: boolean; 
   const want = opts.publicLink ?? !!project.driveBib?.publicLink;
   if (!opts.force && project.driveBib?.hash === hash && !!project.driveBib.publicLink === want) return project;
   const res = await saveProjectBib(project, text, { publicLink: want });
-  return repo.updateProject(project.id, (cur) => ({
-    driveBib: { ...(cur.driveBib ?? { enabled: true }), enabled: true, fileId: res.file.id, publicLink: want ? res.link : undefined, hash, updatedAt: nowIso() },
-  }));
+  return repo.updateProject(
+    project.id,
+    (cur) => ({
+      driveBib: { ...(cur.driveBib ?? { enabled: true }), enabled: true, fileId: res.file.id, publicLink: want ? res.link : undefined, hash, updatedAt: nowIso() },
+    }),
+    { derived: !opts.force },
+  );
 }
 
 let timer: ReturnType<typeof setTimeout> | null = null;

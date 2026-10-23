@@ -125,7 +125,7 @@ async function authorIdFromPaper(paper: Paper, index: number): Promise<string | 
   const list = s2?.authors ?? [];
   const merged = mergeAuthorIds(paper.authors, list);
   if (!merged) return undefined;
-  await repo.updatePaper(paper.id, (cur) => ({ authors: mergeAuthorIds(cur.authors, list) ?? cur.authors }));
+  await repo.updatePaper(paper.id, (cur) => ({ authors: mergeAuthorIds(cur.authors, list) ?? cur.authors }), { derived: true });
   return merged[index]?.s2Id;
 }
 

@@ -43,7 +43,7 @@ export async function reclusterTopics(): Promise<{ topics: number }> {
       const p = papers.get(e.paperId);
       if (!p) continue;
       const near = nearestTopic(p, pool, papers, corpus);
-      if ((near?.topicId ?? null) !== e.topicId) await repo.updateEntry(e.paperId, { topicId: near?.topicId ?? null });
+      if ((near?.topicId ?? null) !== e.topicId) await repo.updateEntry(e.paperId, { topicId: near?.topicId ?? null }, { derived: true });
     }
     return { topics: topics.length };
   }
@@ -102,7 +102,7 @@ export async function reclusterTopics(): Promise<{ topics: number }> {
   for (const a of assigned) for (const id of a.paperIds) newTopicOf.set(id, a.topic.id);
   for (const e of free) {
     const t = newTopicOf.get(e.paperId) ?? null;
-    if (t !== e.topicId) await repo.updateEntry(e.paperId, { topicId: t });
+    if (t !== e.topicId) await repo.updateEntry(e.paperId, { topicId: t }, { derived: true });
   }
   return { topics: pinned.length + assigned.length };
 }
@@ -115,7 +115,7 @@ export async function assignTopic(paperId: string): Promise<void> {
   if (!entry || !paper || entry.topicId || !topics.length) return;
   const corpus = new Corpus([...papers.values()].map(paperDoc));
   const near = nearestTopic(paper, topics.map((t) => ({ id: t.id, memberIds: members(t.id, entries) })), papers, corpus);
-  if (near) await repo.updateEntry(paperId, { topicId: near.topicId });
+  if (near) await repo.updateEntry(paperId, { topicId: near.topicId }, { derived: true });
 }
 
 export async function mergeTopics(intoId: string, fromId: string): Promise<void> {

@@ -103,7 +103,7 @@ export const handlers = {
       if (p) {
         paperId = p.id;
         const e = await repo.getEntry(p.id);
-        if (e) await repo.updateEntry(p.id, { lastOpenedAt: new Date().toISOString() });
+        if (e) await repo.updateEntry(p.id, { lastOpenedAt: new Date().toISOString() }, { derived: true });
       }
     }
     await chrome.storage.session.set({ [`tab:${ctx.tabId}`]: { ...tc, paperId, tabId: ctx.tabId } });
@@ -119,22 +119,26 @@ export const handlers = {
 
   async reportProgress(_ctx: RpcCtx, paperId: string, progress: number) {
     const s = await getSettings();
-    return (
-      (await repo.updateEntry(paperId, (e) => {
-        const p = Math.max(e.progress ?? 0, Math.min(1, progress));
-        const patch: Partial<LibraryEntry> = {};
-        if (p > (e.progress ?? 0) + 0.02) patch.progress = p;
-        if (s.inferReadStatus) {
-          // never move a paper backwards, and never override a status the user set to Read
-          const inferred: ReadingStatus = p >= 0.9 ? 'read' : p >= 0.15 ? 'reading' : e.status;
-          if (STATUS_RANK[inferred] > STATUS_RANK[e.status]) {
-            patch.status = inferred;
-            patch.statusSetBy = 'auto';
-          }
+    const compute = (e: LibraryEntry): Partial<LibraryEntry> => {
+      const p = Math.max(e.progress ?? 0, Math.min(1, progress));
+      const patch: Partial<LibraryEntry> = {};
+      if (p > (e.progress ?? 0) + 0.02) patch.progress = p;
+      if (s.inferReadStatus) {
+        // never move a paper backwards, and never override a status the user set to Read
+        const inferred: ReadingStatus = p >= 0.9 ? 'read' : p >= 0.15 ? 'reading' : e.status;
+        if (STATUS_RANK[inferred] > STATUS_RANK[e.status]) {
+          patch.status = inferred;
+          patch.statusSetBy = 'auto';
         }
-        return patch;
-      })) ?? null
-    );
+      }
+      return patch;
+    };
+    const cur = await repo.getEntry(paperId);
+    if (!cur) return null;
+    const patch = compute(cur);
+    if (!Object.keys(patch).length) return cur;
+    // scroll depth is per-device bookkeeping; a status change (Reading, Read) is worth syncing
+    return (await repo.updateEntry(paperId, compute, { derived: !patch.status })) ?? null;
   },
 
   async putFullText(_ctx: RpcCtx, ft: FullText) {

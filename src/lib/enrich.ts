@@ -109,10 +109,14 @@ export async function applyS2(paper: Paper, s2: S2Paper): Promise<Paper> {
   if (!paper.abstract && s2.abstract) patch.abstract = s2.abstract;
   // S2 author ids (used to follow authors), merged into the authors as stored now
   return (
-    (await repo.updatePaper(paper.id, (cur) => {
-      const authors = mergeAuthorIds(cur.authors, s2.authors ?? []);
-      return authors ? { ...patch, authors } : patch;
-    })) ?? paper
+    (await repo.updatePaper(
+      paper.id,
+      (cur) => {
+        const authors = mergeAuthorIds(cur.authors, s2.authors ?? []);
+        return authors ? { ...patch, authors } : patch;
+      },
+      { derived: true },
+    )) ?? paper
   );
 }
 
@@ -123,14 +127,14 @@ export async function enrichS2(paper: Paper, opts: { references?: boolean; embed
   if (opts.embedding !== false && !p.s2?.embedding) {
     const e = await s2Get(s2.paperId, 'paperId,embedding.specter_v2').catch(() => null);
     if (e?.embedding?.vector?.length) {
-      p = (await repo.updatePaper(p.id, { s2: { ...p.s2!, embedding: e.embedding.vector } })) ?? p;
+      p = (await repo.updatePaper(p.id, { s2: { ...p.s2!, embedding: e.embedding.vector } }, { derived: true })) ?? p;
     }
   }
   if (opts.references !== false && !p.s2?.referenceIds) {
     const refs = await s2References(s2.paperId).catch(() => null);
     if (refs) {
       const ids = refs.flatMap((r) => [canonicalFromS2(r), `s2:${r.paperId}`]);
-      p = (await repo.updatePaper(p.id, { s2: { ...p.s2!, referenceIds: [...new Set(ids)] } })) ?? p;
+      p = (await repo.updatePaper(p.id, { s2: { ...p.s2!, referenceIds: [...new Set(ids)] } }, { derived: true })) ?? p;
     }
   }
   return { paper: p, s2 };
@@ -158,10 +162,14 @@ export async function updateRelevance(paperId: string): Promise<void> {
     }
   }
   // decide against the entry as it is *now* (the user may have filed it while we were scoring)
-  await repo.updateEntry(paperId, (cur) => {
-    const { auto, suggestions } = decideFiling(scores, cur, s.autoFileThreshold, s.suggestThreshold);
-    return { projectIds: [...new Set([...cur.projectIds, ...auto])], suggestions };
-  });
+  await repo.updateEntry(
+    paperId,
+    (cur) => {
+      const { auto, suggestions } = decideFiling(scores, cur, s.autoFileThreshold, s.suggestThreshold);
+      return { projectIds: [...new Set([...cur.projectIds, ...auto])], suggestions };
+    },
+    { derived: true },
+  );
 }
 
 export async function updatePriorities(): Promise<void> {
@@ -180,7 +188,7 @@ export async function updatePriorities(): Promise<void> {
     if (!p) continue;
     const { priority, reasons } = computePriority({ entry: e, paper: p, projects, libraryIds, follows });
     if (priority !== e.priority || reasons.join('|') !== e.priorityReasons.join('|')) {
-      await repo.updateEntry(e.paperId, { priority, priorityReasons: reasons });
+      await repo.updateEntry(e.paperId, { priority, priorityReasons: reasons }, { derived: true });
     }
   }
 }
@@ -193,7 +201,7 @@ export async function enrichPaper(paperId: string): Promise<void> {
   // 1. OpenReview scores and decision
   if (paper.openreviewId && !paper.review && !isWebApp()) {
     const review = await fetchReviews(paper.openreviewId, paper.venue ?? 'OpenReview').catch(() => null);
-    if (review) paper = (await repo.updatePaper(paper.id, { review })) ?? paper;
+    if (review) paper = (await repo.updatePaper(paper.id, { review }, { derived: true })) ?? paper;
   }
 
   // 2. Semantic Scholar: ids, embedding, references
@@ -213,7 +221,7 @@ export async function enrichPaper(paperId: string): Promise<void> {
   if (aiAvailable(s)) {
     if (!paper.extracted) {
       try {
-        paper = (await repo.updatePaper(paper.id, { extracted: await extractFields(paper) })) ?? paper;
+        paper = (await repo.updatePaper(paper.id, { extracted: await extractFields(paper) }, { derived: true })) ?? paper;
       } catch (e) {
         console.warn('[archive] extraction failed', e);
       }
@@ -221,7 +229,7 @@ export async function enrichPaper(paperId: string): Promise<void> {
     if (paper.review?.digest && !paper.review.summary) {
       try {
         const summary = await summarizeReviews(paper);
-        paper = (await repo.updatePaper(paper.id, { review: { ...paper.review, summary } })) ?? paper;
+        paper = (await repo.updatePaper(paper.id, { review: { ...paper.review, summary } }, { derived: true })) ?? paper;
       } catch (e) {
         console.warn('[archive] review summary failed', e);
       }
@@ -253,9 +261,13 @@ export async function rescoreLibrary(): Promise<number> {
     const scores = heuristicScores({ paper: p, projects, papers, entries, corpus });
     const { suggestions } = decideFiling(scores, e, Number.POSITIVE_INFINITY, s.suggestThreshold);
     if (JSON.stringify(suggestions) !== JSON.stringify(e.suggestions)) {
-      await repo.updateEntry(e.paperId, (cur) => ({
-        suggestions: suggestions.filter((x) => !cur.projectIds.includes(x.projectId) && !cur.dismissedProjectIds.includes(x.projectId)),
-      }));
+      await repo.updateEntry(
+        e.paperId,
+        (cur) => ({
+          suggestions: suggestions.filter((x) => !cur.projectIds.includes(x.projectId) && !cur.dismissedProjectIds.includes(x.projectId)),
+        }),
+        { derived: true },
+      );
       changed++;
     }
   }

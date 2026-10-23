@@ -65,7 +65,7 @@ export async function runDaily(opts: { force?: boolean; onUpgrade?: (u: VenueUpg
       report.checked++;
       let paper = await applyS2(lookups[i].p, s2);
       if (!paper.s2?.embedding && s2.embedding?.vector?.length) {
-        paper = (await repo.updatePaper(paper.id, { s2: { ...paper.s2!, embedding: s2.embedding.vector } })) ?? paper;
+        paper = (await repo.updatePaper(paper.id, { s2: { ...paper.s2!, embedding: s2.embedding.vector } }, { derived: true })) ?? paper;
         report.embeddingsAdded++;
       }
       if (paper.venueStatus !== 'accepted' || paper.bibtexSource === 'arxiv') {
@@ -91,7 +91,7 @@ export async function runDaily(opts: { force?: boolean; onUpgrade?: (u: VenueUpg
     try {
       const refs = await s2References(p.s2!.paperId);
       const ids = refs.flatMap((r) => [canonicalFromS2(r), `s2:${r.paperId}`]);
-      await repo.updatePaper(p.id, { s2: { ...p.s2!, referenceIds: [...new Set(ids)] } });
+      await repo.updatePaper(p.id, { s2: { ...p.s2!, referenceIds: [...new Set(ids)] } }, { derived: true });
       report.referencesAdded++;
     } catch (e) {
       report.errors.push(`references ${p.id}: ${(e as Error).message}`);
@@ -104,7 +104,7 @@ export async function runDaily(opts: { force?: boolean; onUpgrade?: (u: VenueUpg
   for (const p of isWebApp() ? [] : papers.filter((x) => x.openreviewId && x.venueStatus === 'under-review').slice(0, 10)) {
     const review = await fetchReviews(p.openreviewId!, p.venue ?? 'OpenReview').catch(() => null);
     if (review && (review.decision !== p.review?.decision || review.scores.length !== p.review?.scores.length)) {
-      await repo.updatePaper(p.id, { review: { ...review, summary: p.review?.summary } });
+      await repo.updatePaper(p.id, { review: { ...review, summary: p.review?.summary } }, { derived: true });
     }
   }
 

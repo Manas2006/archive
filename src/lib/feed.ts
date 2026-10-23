@@ -228,7 +228,7 @@ async function collectAuthors(pool: Pool, known: Known, report: FeedReport, now:
         f = await resolveFollow(f);
         if (!f.s2AuthorId) {
           // no profile with this name yet: move it to the back of the queue
-          await repo.updateFollow(f.id, { lastCheckedAt: stamp });
+          await repo.updateFollow(f.id, { lastCheckedAt: stamp }, { derived: true });
           failures = 0;
           continue;
         }
@@ -244,7 +244,7 @@ async function collectAuthors(pool: Pool, known: Known, report: FeedReport, now:
         c.authorReasons.push({ kind: 'author', followId: f.id, name: f.name });
         pool.add(c);
       }
-      await repo.updateFollow(f.id, { lastCheckedAt: stamp });
+      await repo.updateFollow(f.id, { lastCheckedAt: stamp }, { derived: true });
     } catch (e) {
       failures++;
       report.errors.push(`author ${f.name}: ${msg(e)}`);
@@ -534,7 +534,7 @@ export async function saveFeedItem(id: string): Promise<string> {
   const ids = it.authors.map((a) => ({ name: a.name, authorId: a.s2Id ?? null }));
   const saved = await repo.getPaper(paperId);
   if (saved && ids.some((a) => a.authorId) && mergeAuthorIds(saved.authors, ids)) {
-    await repo.updatePaper(paperId, (cur) => ({ authors: mergeAuthorIds(cur.authors, ids) ?? cur.authors }));
+    await repo.updatePaper(paperId, (cur) => ({ authors: mergeAuthorIds(cur.authors, ids) ?? cur.authors }), { derived: true });
   }
   await repo.setFeedStatus(id, 'saved');
   return paperId;

@@ -6,6 +6,8 @@ export interface ChangeEvent {
   table: string;
   keys: string[];
   paperIds: string[];
+  /** Written by background work (enrichment, sorting, reading progress), not by the user. Not synced. */
+  derived?: boolean;
 }
 
 const CHANNEL = 'marginalia:changes';

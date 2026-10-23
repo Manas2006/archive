@@ -34,16 +34,18 @@ const SNAPSHOT_VERSION = 1;
 const MAX_ATTACHMENT_CHARS = 1.5 * 1024 * 1024;
 const LEASE_MS = 2 * 60 * 1000;
 const LEASE_WAIT_MS = 15000;
+const RECENT_SYNC_MS = 5 * 60 * 1000;
 const MAX_TOMBSTONES = 5000;
 
-type TableName = 'papers' | 'library' | 'annotations' | 'projects' | 'topics' | 'threads' | 'attachments' | 'follows' | 'feed';
+// Topics are not synced: each device clusters its own library, and two devices doing it
+// independently would otherwise leave duplicate topics on both.
+type TableName = 'papers' | 'library' | 'annotations' | 'projects' | 'threads' | 'attachments' | 'follows' | 'feed';
 
 const TABLES: { name: TableName; key: (r: any) => string; indexed: boolean }[] = [
   { name: 'papers', key: (r) => r.id, indexed: true },
   { name: 'library', key: (r) => r.paperId, indexed: true },
   { name: 'annotations', key: (r) => r.id, indexed: true },
   { name: 'projects', key: (r) => r.id, indexed: true },
-  { name: 'topics', key: (r) => r.id, indexed: true },
   { name: 'threads', key: (r) => r.id, indexed: true },
   { name: 'attachments', key: (r) => r.id, indexed: false },
   { name: 'follows', key: (r) => r.id, indexed: true },
@@ -126,8 +128,15 @@ export function startAutoSync(getEnabled: () => Promise<boolean>, opts: { deboun
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => void run(), debounceMs);
   });
-  void run();
+  // a service worker or page that just started doesn't need a sync if one ran a moment ago
+  void lastSyncedAt()
+    .then((t) => {
+      if (!t || Date.now() - Date.parse(t) > RECENT_SYNC_MS) void run();
+    })
+    .catch(() => void run());
   const interval = setInterval(() => void run(), intervalMs);
+  // a page navigation can cut a sync short: give the lease back so the next page can sync
+  if (typeof window !== 'undefined') window.addEventListener('pagehide', () => void releaseLease());
   return () => {
     stopped = true;
     off();
@@ -137,6 +146,7 @@ export function startAutoSync(getEnabled: () => Promise<boolean>, opts: { deboun
 }
 
 function triggersSync(evt: ChangeEvent): boolean {
+  if (evt.derived) return false; // background bookkeeping isn't synced (see WriteOpts in repo.ts)
   if (evt.table === 'drive') return evt.keys.includes('connected');
   return evt.table === '*' || SYNCED_TABLES.has(evt.table);
 }
@@ -312,6 +322,42 @@ function newer(a: any, b: any): boolean {
 
 const syncableAttachment = (a: Attachment) => (a.dataUrl?.length ?? 0) <= MAX_ATTACHMENT_CHARS;
 
+const laterIso = (a?: string | null, b?: string | null) => ((a ?? '') > (b ?? '') ? a : b) ?? null;
+
+/**
+ * A newer record from another device replaces ours, except for fields this device
+ * computes for itself (topics, inbox priority, suggestions, reading progress, lookup
+ * results). Those are written as derived and never travel, so keep our own values.
+ */
+function keepLocalDerived(table: TableName, r: any, l: any): any {
+  if (table === 'library') {
+    return {
+      ...r,
+      topicId: l.topicId ?? null,
+      priority: l.priority ?? r.priority,
+      priorityReasons: l.priorityReasons ?? r.priorityReasons,
+      suggestions: (l.suggestions ?? []).filter((x: { projectId: string }) => !(r.projectIds ?? []).includes(x.projectId) && !(r.dismissedProjectIds ?? []).includes(x.projectId)),
+      progress: Math.max(l.progress ?? 0, r.progress ?? 0),
+      lastOpenedAt: laterIso(l.lastOpenedAt, r.lastOpenedAt),
+    };
+  }
+  if (table === 'papers') {
+    const out = { ...r };
+    for (const k of ['review', 'extracted', 'firstFigureUrl', 'dblpKey', 's2Id'] as const) if (out[k] == null && l[k] != null) out[k] = l[k];
+    if (l.s2 && (!r.s2 || (l.s2.embedding?.length && !r.s2.embedding?.length))) out.s2 = { ...r.s2, ...l.s2 };
+    // author ids learned from Semantic Scholar on this device
+    if (Array.isArray(l.authors) && Array.isArray(r.authors) && l.authors.length === r.authors.length) {
+      out.authors = r.authors.map((a: any, i: number) => (!a.s2Id && l.authors[i]?.s2Id && l.authors[i].name === a.name ? { ...a, s2Id: l.authors[i].s2Id } : a));
+    }
+    out.aliases = [...new Set([...(r.aliases ?? []), ...(l.aliases ?? [])])].filter((x) => x !== r.id);
+    return out;
+  }
+  if (table === 'follows') return { ...r, lastCheckedAt: laterIso(l.lastCheckedAt, r.lastCheckedAt) };
+  // feed embeddings are not uploaded; keep the one this device has
+  if (table === 'feed' && l.embedding && !r.embedding) return { ...r, embedding: l.embedding };
+  return r;
+}
+
 async function mergeRemote(remote: Snapshot, dead: Set<string>, remoteDead: string[]): Promise<{ pulled: number; localAhead: boolean }> {
   const d = db() as any;
   const incoming: Partial<Record<TableName, any[]>> = {};
@@ -329,8 +375,7 @@ async function mergeRemote(remote: Snapshot, dead: Set<string>, remoteDead: stri
       if (t.name === 'attachments' && dead.has(k)) continue;
       const l = byKey.get(k);
       if (newer(r, l)) {
-        // feed embeddings are not uploaded; keep the one this device has
-        take.push(t.name === 'feed' && l?.embedding && !r.embedding ? { ...r, embedding: l.embedding } : r);
+        take.push(l ? keepLocalDerived(t.name, r, l) : r);
       } else if (newer(l, r)) {
         localAhead = true;
       }
@@ -359,7 +404,7 @@ async function mergeRemote(remote: Snapshot, dead: Set<string>, remoteDead: stri
         library: incoming.library ?? [],
         annotations: incoming.annotations ?? [],
         projects: incoming.projects ?? [],
-        topics: incoming.topics ?? [],
+        topics: [],
         threads: incoming.threads ?? [],
         attachments: incoming.attachments ?? [],
         follows: incoming.follows ?? [],
@@ -390,6 +435,7 @@ async function buildSnapshot(tombstones: string[], device?: string): Promise<str
   const dead = new Set(tombstones);
   return JSON.stringify({
     ...data,
+    topics: [],
     papers: data.papers.map(slimPaper),
     attachments: data.attachments.filter((a) => syncableAttachment(a) && !dead.has(a.id)),
     feed: data.feed.map(({ embedding: _drop, ...rest }) => rest),

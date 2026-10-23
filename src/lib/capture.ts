@@ -267,7 +267,7 @@ export async function savePaper(input: SaveInput): Promise<SaveResult> {
     // another record may already claim one of our aliases (e.g. the OpenReview version of an arXiv paper)
     paper = await repo.putPaper(paper);
   } else if (input.pageMeta?.firstFigureUrl && !paper.firstFigureUrl) {
-    paper = (await repo.updatePaper(paper.id, { firstFigureUrl: input.pageMeta.firstFigureUrl })) ?? paper;
+    paper = (await repo.updatePaper(paper.id, { firstFigureUrl: input.pageMeta.firstFigureUrl }, { derived: true })) ?? paper;
   }
   const { entry, created } = await repo.ensureEntry(paper.id);
   return { paper, entry, created };

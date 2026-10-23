@@ -47,6 +47,16 @@ const alive = <T extends { deletedAt: string | null }>(x: T | undefined | null):
 /** A patch, or a function computing one from the current record (read inside the same transaction). */
 export type Patch<T> = Partial<T> | ((current: T) => Partial<T>);
 
+/**
+ * `derived`: the write comes from background work (enrichment, sorting, reading
+ * progress), not from the user. It keeps the record's updatedAt and stays out of
+ * the change log, so sync (newest edit wins) never lets it overwrite a real edit
+ * made on another device. Each device recomputes derived fields itself.
+ */
+export interface WriteOpts {
+  derived?: boolean;
+}
+
 const resolvePatch = <T>(cur: T, patch: Patch<T>): Partial<T> => (typeof patch === 'function' ? (patch as (c: T) => Partial<T>)(cur) : patch);
 
 // ---------------------------------------------------------------------------
@@ -77,17 +87,17 @@ export async function putPaper(p: Paper): Promise<Paper> {
 }
 
 /** Read-modify-write in one transaction, so concurrent field updates don't clobber each other. */
-export async function updatePaper(id: string, patch: Patch<Paper>): Promise<Paper | undefined> {
+export async function updatePaper(id: string, patch: Patch<Paper>, opts: WriteOpts = {}): Promise<Paper | undefined> {
   const d = db();
   const next = await d.transaction('rw', d.papers, d.changes, async () => {
     const p = (await d.papers.get(id)) ?? (await d.papers.where('aliases').equals(id).first());
     if (!p) return undefined;
-    const n: Paper = { ...p, ...resolvePatch(p, patch), id: p.id, updatedAt: nowIso() };
+    const n: Paper = { ...p, ...resolvePatch(p, patch), id: p.id, updatedAt: opts.derived ? p.updatedAt : nowIso() };
     await d.papers.put(n);
-    await d.changes.add({ table: 'papers', key: p.id, op: 'put', at: n.updatedAt, synced: 0 });
+    if (!opts.derived) await d.changes.add({ table: 'papers', key: p.id, op: 'put', at: n.updatedAt, synced: 0 });
     return n;
   });
-  if (next) emitChange({ table: 'papers', keys: [next.id], paperIds: [next.id] });
+  if (next) emitChange({ table: 'papers', keys: [next.id], paperIds: [next.id], derived: opts.derived });
   return next;
 }
 
@@ -135,19 +145,19 @@ export async function putEntry(e: LibraryEntry): Promise<LibraryEntry> {
   return next;
 }
 
-export async function updateEntry(paperId: string, patch: Patch<LibraryEntry>): Promise<LibraryEntry | undefined> {
+export async function updateEntry(paperId: string, patch: Patch<LibraryEntry>, opts: WriteOpts = {}): Promise<LibraryEntry | undefined> {
   const d = db();
   const next = await d.transaction('rw', d.library, d.changes, async () => {
     const e = await d.library.get(paperId);
     if (!alive(e)) return undefined;
     const p = { ...resolvePatch(e, patch) };
     if (p.status && !p.statusSetBy) p.statusSetBy = 'user';
-    const n: LibraryEntry = { ...e, ...p, paperId, updatedAt: nowIso() };
+    const n: LibraryEntry = { ...e, ...p, paperId, updatedAt: opts.derived ? e.updatedAt : nowIso() };
     await d.library.put(n);
-    await d.changes.add({ table: 'library', key: paperId, op: 'put', at: n.updatedAt, synced: 0 });
+    if (!opts.derived) await d.changes.add({ table: 'library', key: paperId, op: 'put', at: n.updatedAt, synced: 0 });
     return n;
   });
-  if (next) emitChange({ table: 'library', keys: [paperId], paperIds: [paperId] });
+  if (next) emitChange({ table: 'library', keys: [paperId], paperIds: [paperId], derived: opts.derived });
   return next;
 }
 
@@ -266,17 +276,17 @@ export async function createProject(input: { name: string; description?: string;
   return p;
 }
 
-export async function updateProject(id: string, patch: Patch<Project>): Promise<Project | undefined> {
+export async function updateProject(id: string, patch: Patch<Project>, opts: WriteOpts = {}): Promise<Project | undefined> {
   const d = db();
   const next = await d.transaction('rw', d.projects, d.changes, async () => {
     const p = await d.projects.get(id);
     if (!alive(p)) return undefined;
-    const n: Project = { ...p, ...resolvePatch(p, patch), id, updatedAt: nowIso() };
+    const n: Project = { ...p, ...resolvePatch(p, patch), id, updatedAt: opts.derived ? p.updatedAt : nowIso() };
     await d.projects.put(n);
-    await d.changes.add({ table: 'projects', key: id, op: 'put', at: n.updatedAt, synced: 0 });
+    if (!opts.derived) await d.changes.add({ table: 'projects', key: id, op: 'put', at: n.updatedAt, synced: 0 });
     return n;
   });
-  if (next) emitChange({ table: 'projects', keys: [id], paperIds: [] });
+  if (next) emitChange({ table: 'projects', keys: [id], paperIds: [], derived: opts.derived });
   return next;
 }
 
@@ -361,17 +371,17 @@ export async function follow(input: { name: string; s2AuthorId?: string | null; 
   return f;
 }
 
-export async function updateFollow(id: string, patch: Patch<Follow>): Promise<Follow | undefined> {
+export async function updateFollow(id: string, patch: Patch<Follow>, opts: WriteOpts = {}): Promise<Follow | undefined> {
   const d = db();
   const next = await d.transaction('rw', d.follows, d.changes, async () => {
     const f = await d.follows.get(id);
     if (!alive(f)) return undefined;
-    const n: Follow = { ...f, ...resolvePatch(f, patch), id, updatedAt: nowIso() };
+    const n: Follow = { ...f, ...resolvePatch(f, patch), id, updatedAt: opts.derived ? f.updatedAt : nowIso() };
     await d.follows.put(n);
-    await d.changes.add({ table: 'follows', key: id, op: 'put', at: n.updatedAt, synced: 0 });
+    if (!opts.derived) await d.changes.add({ table: 'follows', key: id, op: 'put', at: n.updatedAt, synced: 0 });
     return n;
   });
-  if (next) emitChange({ table: 'follows', keys: [id], paperIds: [] });
+  if (next) emitChange({ table: 'follows', keys: [id], paperIds: [], derived: opts.derived });
   return next;
 }
 
@@ -401,17 +411,19 @@ export async function addFeedItems(items: FeedItem[]): Promise<number> {
     for (const it of items) {
       const cur = await d.feed.get(it.id);
       let next: FeedItem;
-      if (cur && !cur.deletedAt) {
+      const known = !!cur && !cur.deletedAt;
+      if (cur && known) {
         const sig = (r: FeedItem['reasons'][number]) => JSON.stringify({ ...r, score: undefined, count: undefined });
         const have = new Set(cur.reasons.map(sig));
         const reasons = [...cur.reasons, ...it.reasons.filter((r) => !have.has(sig(r)))];
-        next = { ...cur, ...it, status: cur.status, foundAt: cur.foundAt, createdAt: cur.createdAt, reasons, score: Math.max(cur.score, it.score), updatedAt: nowIso() };
+        // new reasons for a known item are background work: keep its updatedAt (see WriteOpts)
+        next = { ...cur, ...it, status: cur.status, foundAt: cur.foundAt, createdAt: cur.createdAt, reasons, score: Math.max(cur.score, it.score), updatedAt: cur.updatedAt };
       } else {
         next = { ...it, updatedAt: nowIso() };
         added++;
       }
       await d.feed.put(next);
-      await d.changes.add({ table: 'feed', key: it.id, op: 'put', at: next.updatedAt, synced: 0 });
+      if (!known) await d.changes.add({ table: 'feed', key: it.id, op: 'put', at: next.updatedAt, synced: 0 });
       keys.push(it.id);
     }
   });
