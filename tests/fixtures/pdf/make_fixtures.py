@@ -4,7 +4,7 @@
 
 sample.pdf     three pages of body text, a URI link on page 1, a rotated margin
                stamp on page 1 (like arXiv's) and a paragraph repeated on pages
-               2 and 3. (The tests make a /Rotate 90 copy of it with pdf-lib.)
+               2 and 3. (The tests make a copy with rotated pages using pdf-lib.)
 encrypted.pdf  one page with an empty user password and an owner password, so
                pdf.js can read it but pdf-lib refuses to edit it.
 """

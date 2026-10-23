@@ -202,7 +202,8 @@ function PdfButtons({ paper, entry }: { paper: Paper; entry: LibraryEntry | null
     setMsg(null);
     try {
       const res = kind === 'download' ? await downloadAnnotatedPdf(paper) : await savePdfToDrive(paper);
-      if (res.missed) setMsg(`${res.missed} highlight${res.missed === 1 ? '' : 's'} couldn't be placed in this PDF version.`);
+      if (res.locked) setMsg("This PDF is locked against changes, so it was saved without your highlights.");
+      else if (res.missed) setMsg(`${res.missed} highlight${res.missed === 1 ? '' : 's'} couldn't be placed in this PDF version.`);
       else if (kind === 'drive') setMsg('Saved to Google Drive.');
     } catch (e) {
       setMsg((e as Error).message);

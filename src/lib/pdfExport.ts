@@ -209,9 +209,10 @@ function itemBox(it: TextItem, from: number, to: number): Box | null {
   while (to > from && /\s/.test(str[to - 1])) to--;
   if (to <= from || !Array.isArray(it.transform) || it.transform.length < 6) return null;
   const [a, b, c, d, e, f] = it.transform;
+  if (![a, b, c, d, e, f].every(Number.isFinite)) return null;
   const scaleX = Math.hypot(a, b);
   const size = it.height > 0 ? it.height : Math.hypot(c, d) || scaleX;
-  if (!(size > 0)) return null;
+  if (!(size > 0) || !Number.isFinite(size)) return null;
   const ux = scaleX ? a / scaleX : 1;
   const uy = scaleX ? b / scaleX : 0;
   const flip = ux * d - uy * c < 0 ? -1 : 1; // mirrored text: glyphs point the other way
@@ -220,7 +221,7 @@ function itemBox(it: TextItem, from: number, to: number): Box | null {
   const adv = advances(str, it.family);
   const total = adv[str.length] || 1;
   // items without an advance width still get a box, estimated from the font size
-  const width = it.width > 0 ? it.width : (total * size) / 1000;
+  const width = it.width > 0 ? it.width : (total * (scaleX || size)) / 1000;
   const s = e * ux + f * uy;
   const base = e * vx + f * vy;
   return {
@@ -441,7 +442,7 @@ export async function annotatePdf(pdfBytes: Uint8Array, annotations: Annotation[
   let doc: DocText | null = null;
   if (highlights.length) {
     try {
-      doc = await readText(opts.pdfjs, pdfBytes.slice(), opts.docParams); // pdf.js may detach the buffer it gets
+      doc = await readText(opts.pdfjs, new Uint8Array(pdfBytes), opts.docParams); // a copy: pdf.js may detach the buffer it gets
     } catch (e) {
       if ((e as Error)?.name === 'PasswordException') return encrypted();
       throw e;

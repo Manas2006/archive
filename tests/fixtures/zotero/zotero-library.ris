@@ -1,0 +1,75 @@
+TY  - GEN
+TI  - Chain-of-Thought Prompting Elicits Reasoning in Large Language Models
+AU  - Wei, Jason
+AU  - Wang, Xuezhi
+AU  - Schuurmans, Dale
+AU  - Bosma, Maarten
+AU  - Ichter, Brian
+AU  - Xia, Fei
+AU  - Chi, Ed
+AU  - Le, Quoc
+AU  - Zhou, Denny
+AB  - We explore how generating a chain of thought, a series of intermediate reasoning steps, significantly improves the ability of large language models to perform complex reasoning.
+DA  - 2023/01/10/
+PY  - 2023
+DO  - 10.48550/arXiv.2201.11903
+DP  - arXiv.org
+PB  - arXiv
+UR  - http://arxiv.org/abs/2201.11903
+Y2  - 2026/09/14/18:22:05
+L1  - http://arxiv.org/pdf/2201.11903v6
+N1  - <div data-schema-version="9"><p>Comment: Published at NeurIPS 2022</p>
+</div>
+N1  - <div data-schema-version="9"><h1>Reading notes</h1>
+<p>Few-shot exemplars pair each question with <strong>intermediate steps</strong> &amp; a final answer.</p>
+<ul>
+<li>Gains only appear at ~100B parameters</li>
+<li>See <a href="https://arxiv.org/abs/2203.11171">self-consistency</a></li>
+</ul>
+</div>
+KW  - Computer Science - Computation and Language
+KW  - reasoning
+KW  - prompting
+ER  -
+
+TY  - JOUR
+TI  - Highly accurate protein structure prediction with AlphaFold
+AU  - Jumper, John
+AU  - Evans, Richard
+AU  - Pritzel, Alexander
+T2  - Nature
+AB  - Proteins are essential to life, and understanding their structure can facilitate a mechanistic understanding of their function.
+DA  - 2021/08//
+PY  - 2021
+DO  - 10.1038/s41586-021-03819-2
+VL  - 596
+IS  - 7873
+SP  - 583
+EP  - 589
+J2  - Nature
+SN  - 1476-4687
+UR  - https://www.nature.com/articles/s41586-021-03819-2
+N1  - <div data-schema-version="9"><p>Read for the structure module; compare with RoseTTAFold.</p>
+</div>
+KW  - protein folding
+ER  -
+
+TY  - CONF
+TI  - BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding
+AU  - Devlin, Jacob
+AU  - Chang, Ming-Wei
+AU  - Lee, Kenton
+AU  - Toutanova, Kristina
+T2  - NAACL-HLT 2019
+C3  - Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics
+DA  - 2019/06//
+PY  - 2019
+DO  - 10.18653/v1/N19-1423
+SP  - 4171
+EP  - 4186
+PB  - Association for Computational Linguistics
+UR  - https://aclanthology.org/N19-1423
+KW  - transformers
+KW  - pretraining
+ER  -
+

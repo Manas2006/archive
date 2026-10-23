@@ -30,7 +30,7 @@ async function inspect(bytes: Uint8Array) {
     const items = (tc.items as any[]).filter((it) => typeof it.str === 'string') as Item[];
     pages.push({ text: items.map((it) => it.str).join(''), items, annots: await page.getAnnotations(), view: page.view });
   }
-  const meta = (await doc.getMetadata()) as { info: Record<string, unknown> };
+  const meta = (await doc.getMetadata()) as unknown as { info: Record<string, unknown> };
   await doc.destroy();
   const starts: number[] = [];
   let pos = 0;
@@ -193,9 +193,11 @@ describe('annotatePdf', () => {
     const first = base.text.indexOf(repeated);
     const second = base.text.indexOf(repeated, first + 1);
     expect(second).toBeGreaterThan(base.starts[2]); // first copy on page 2, second on page 3
-    const fromPdf = annotation(repeated, { medium: 'pdf', pos: [second, second + repeated.length] });
-    // the HTML rendering's offsets point somewhere else entirely
-    const fromHtml = annotation(repeated.replace('themethod', 'the method'), { medium: 'html', pos: [second, second + repeated.length] });
+    // same quote (with the space the reader puts back at the line end) and offsets, only the medium differs;
+    // an HTML highlight's offsets index the HTML text, so they must not pull it to the second copy
+    const exact = repeated.replace('themethod', 'the method');
+    const fromPdf = annotation(exact, { medium: 'pdf', pos: [second, second + repeated.length] });
+    const fromHtml = annotation(exact, { medium: 'html', pos: [second, second + repeated.length] });
     const res = await annotatePdf(sample, [fromPdf], { pdfjs, docParams });
     const out = await inspect(res.bytes);
     expect(highlightsOn(out.pages[1])).toHaveLength(0);
@@ -369,13 +371,37 @@ describe('annotatePdf', () => {
   });
 
   it('escapes PDF string syntax and keeps non-ASCII notes intact', async () => {
-    const note = 'Why (really)? \\ see "Table 1" → θ ≠ τ';
-    const a = annotation('which keeps training cheap', { medium: 'html', label: 'weakness', note });
-    const res = await annotatePdf(sample, [a], { pdfjs, author: 'José Müller', docParams });
+    const ascii = 'Why (really)? C:\\data\\ ) unbalanced (';
+    const unicode = 'see "Table 1" → θ ≠ τ';
+    const a = annotation('which keeps training cheap', { medium: 'html', label: 'weakness', note: ascii });
+    const b = annotation('Sparse attention has a long history', { medium: 'html', note: unicode });
+    const res = await annotatePdf(sample, [a, b], { pdfjs, author: 'José Müller', docParams });
     const out = await inspect(res.bytes);
-    const [h] = out.pages.flatMap(highlightsOn);
-    expect(h.contentsObj.str).toBe(`Weakness\n${note}`);
-    expect(h.titleObj.str).toBe('José Müller');
+    const [ha, hb] = out.pages.flatMap(highlightsOn);
+    expect(ha.contentsObj.str).toBe(`Weakness\n${ascii}`);
+    expect(hb.contentsObj.str).toBe(unicode);
+    expect(ha.titleObj.str).toBe('José Müller');
+  });
+
+  it('still boxes text whose font reports no glyph widths', async () => {
+    // give the body font an all-zero /Widths array, so pdf.js reports zero-width text items
+    const doc = await PDFDocument.load(sample, { updateMetadata: false });
+    const fonts = doc.getPage(0).node.Resources()!.lookup(PDFName.of('Font'), PDFDict);
+    for (const key of fonts.keys()) {
+      const font = fonts.lookup(key, PDFDict);
+      font.set(PDFName.of('FirstChar'), doc.context.obj(32));
+      font.set(PDFName.of('LastChar'), doc.context.obj(126));
+      font.set(PDFName.of('Widths'), doc.context.obj(new Array(95).fill(0)));
+    }
+    const bytes = await doc.save();
+    const zero = await inspect(bytes);
+    const item = itemWith(zero.pages[0].items, 'lightweight scoring layer');
+    expect(item.width).toBe(0);
+    const res = await annotatePdf(bytes, [annotation('lightweight scoring layer', { medium: 'html' })], { pdfjs, docParams });
+    expect(res).toMatchObject({ placed: 1, missed: [] });
+    const [box] = quadRects(highlightsOn((await inspect(res.bytes)).pages[0])[0].quadPoints);
+    expect(box.x1 - box.x0).toBeGreaterThan(50); // estimated from the font size
+    expect(box.x0).toBeGreaterThanOrEqual(item.transform[4]);
   });
 });
 

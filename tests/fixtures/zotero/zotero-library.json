@@ -1,0 +1,64 @@
+[
+  {
+    "id": "http://zotero.org/users/local/k3Jd9x/items/QW3RTY7U",
+    "type": "article",
+    "abstract": "Recent work has demonstrated substantial gains on many NLP tasks and benchmarks by pre-training on a large corpus of text followed by fine-tuning on a specific task.",
+    "DOI": "10.48550/arXiv.2005.14165",
+    "note": "arXiv:2005.14165 [cs]",
+    "number": "arXiv:2005.14165",
+    "publisher": "arXiv",
+    "source": "arXiv.org",
+    "title": "Language Models are Few-Shot Learners",
+    "URL": "http://arxiv.org/abs/2005.14165",
+    "author": [
+      { "family": "Brown", "given": "Tom B." },
+      { "family": "Mann", "given": "Benjamin" },
+      { "family": "Ryder", "given": "Nick" }
+    ],
+    "accessed": { "date-parts": [["2026", 9, 2]] },
+    "issued": { "date-parts": [["2020", 7, 22]] }
+  },
+  {
+    "id": "vaswani2017attention",
+    "type": "paper-conference",
+    "container-title": "Advances in Neural Information Processing Systems",
+    "event-title": "NeurIPS 2017",
+    "title": "Attention Is All You Need",
+    "URL": "https://proceedings.neurips.cc/paper/2017/hash/3f5ee243547dee91fbd053c1c4a845aa-Abstract.html",
+    "volume": "30",
+    "author": [
+      { "family": "Vaswani", "given": "Ashish" },
+      { "family": "Shazeer", "given": "Noam" },
+      { "family": "Parmar", "given": "Niki" }
+    ],
+    "issued": { "date-parts": [[2017]] }
+  },
+  {
+    "id": "silver2016mastering",
+    "type": "article-journal",
+    "container-title": "Nature",
+    "DOI": "10.1038/nature16961",
+    "issue": "7587",
+    "page": "484-489",
+    "title": "Mastering the game of Go with deep neural networks and tree search",
+    "volume": "529",
+    "author": [
+      { "family": "Silver", "given": "David" },
+      { "family": "Huang", "given": "Aja" },
+      { "family": "Maddison", "given": "Chris J." }
+    ],
+    "issued": { "date-parts": [[2016, 1, 28]] }
+  },
+  {
+    "id": "oord2018representation",
+    "type": "article",
+    "title": "Representation Learning with Contrastive Predictive Coding",
+    "URL": "https://arxiv.org/pdf/1807.03748v2.pdf",
+    "author": [
+      { "family": "Oord", "given": "Aaron", "non-dropping-particle": "van den" },
+      { "family": "Li", "given": "Yazhe" },
+      { "family": "Vinyals", "given": "Oriol" }
+    ],
+    "issued": { "date-parts": [[2018]] }
+  }
+]

@@ -3,11 +3,16 @@
 import { arxivBibtex, baseCiteKey, genericBibtex, normalizeForeignBib, toAuthor, uniqueCiteKey } from './bibtex';
 import { arxivUrls, normalizeDoi, nowIso, openreviewUrls, parseArxivId, parsePaperUrl } from './ids';
 import * as repo from './repo';
-import { extractCodeLinks, fetchArxiv } from './sources/arxiv';
+import { extractCodeLinks, fetchArxiv, type ArxivMeta } from './sources/arxiv';
 import { fetchOpenReview } from './sources/openreview';
-import { aliasesFromS2, canonicalFromS2, s2Venue, type S2Paper } from './sources/s2';
+import { aliasesFromS2, canonicalFromS2, s2Batch, s2Venue, type S2Paper } from './sources/s2';
+import { fetchText, HttpError } from './net';
+import { isWebApp } from './platform';
 import { shortVenue } from './venue';
 import type { LibraryEntry, PageMeta, Paper } from './types';
+
+/** Shown when someone adds an OpenReview paper in the web app, which can't reach OpenReview (no CORS). */
+export const OPENREVIEW_IN_WEB_APP = 'Open OpenReview papers in the Archive extension on a computer; they will sync here.';
 
 export interface SaveInput {
   url?: string;
@@ -27,12 +32,88 @@ function yearOf(iso?: string | null): number | null {
   return Number.isFinite(y) ? y : null;
 }
 
-async function buildArxivPaper(arxivId: string, version: number | undefined, pageMeta?: PageMeta): Promise<Paper> {
-  let meta: Awaited<ReturnType<typeof fetchArxiv>>[number] | undefined;
+// ---- arXiv metadata when the arXiv API can't be reached ----
+// export.arxiv.org sends no CORS headers, so the web app (and an extension whose
+// request failed at the network level) falls back to Semantic Scholar, then to
+// the paper's arXiv HTML page, which do allow cross-origin requests.
+
+async function arxivMetaFromS2(arxivId: string): Promise<Partial<ArxivMeta> | undefined> {
   try {
-    [meta] = await fetchArxiv([arxivId]);
+    const [s] = await s2Batch([`arXiv:${arxivId}`]);
+    if (!s?.title) return undefined;
+    const doi = s.externalIds?.DOI && !/^10\.48550\//i.test(s.externalIds.DOI) ? s.externalIds.DOI : undefined; // skip arXiv's own DOI
+    return {
+      id: arxivId,
+      title: s.title,
+      authors: s.authors?.length ? s.authors.map((a) => a.name).filter(Boolean) : undefined,
+      abstract: s.abstract || undefined,
+      published: s.publicationDate ?? (s.year ? `${s.year}-01-01` : undefined),
+      doi,
+    };
   } catch (e) {
-    console.warn('[archive] arXiv API failed, using page metadata', e);
+    console.warn('[archive] Semantic Scholar lookup failed', e);
+    return undefined;
+  }
+}
+
+/** Title, authors and abstract from an arXiv HTML (LaTeXML) document, like extractPageMeta('arxiv-html') does for the live page. */
+export function arxivHtmlMeta(doc: Document, pageUrl: string): PageMeta {
+  const metaAll = (name: string) => [...doc.querySelectorAll(`meta[name="${name}"]`)].map((m) => m.getAttribute('content') ?? '').filter(Boolean);
+  const clean = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim() || undefined;
+  const root = doc.querySelector('article.ltx_document') ?? doc.querySelector('.ltx_page_content') ?? doc.querySelector('main') ?? doc.body;
+  const m: PageMeta = {};
+  m.title = metaAll('citation_title')[0] ?? clean(root?.querySelector('.ltx_title_document')?.textContent) ?? clean(doc.title);
+  const cited = metaAll('citation_author');
+  m.authors = cited.length
+    ? cited.map((a) => (a.includes(',') ? `${a.split(',').slice(1).join(' ').trim()} ${a.split(',')[0].trim()}` : a).trim())
+    : [...(root?.querySelectorAll('.ltx_personname') ?? [])].map((e) => clean(e.childNodes[0]?.textContent ?? e.textContent) ?? '').filter((s) => s && s.length < 80);
+  m.abstract = metaAll('citation_abstract')[0] ?? clean(root?.querySelector('.ltx_abstract p, .ltx_abstract .ltx_p')?.textContent);
+  m.published = metaAll('citation_date')[0] ?? metaAll('citation_online_date')[0];
+  const fig = root?.querySelector('figure.ltx_figure img')?.getAttribute('src');
+  if (fig) {
+    try {
+      // relative image paths resolve against the page as a directory
+      m.firstFigureUrl = new URL(fig, pageUrl.endsWith('/') ? pageUrl : `${pageUrl}/`).href;
+    } catch {
+      /* bad src */
+    }
+  }
+  m.codeLinks = extractCodeLinks(...[...(root?.querySelectorAll('a[href]') ?? [])].slice(0, 400).map((a) => a.getAttribute('href') ?? ''));
+  return m;
+}
+
+async function arxivMetaFromHtml(arxivId: string, version?: number): Promise<PageMeta | undefined> {
+  if (typeof DOMParser === 'undefined') return undefined; // Chrome's service worker has no DOM
+  try {
+    const url = arxivUrls(arxivId, version).html;
+    const doc = new DOMParser().parseFromString(await fetchText(url, { timeoutMs: 20000, retries: 1 }), 'text/html');
+    const m = arxivHtmlMeta(doc, url);
+    return m.title ? m : undefined;
+  } catch (e) {
+    console.warn('[archive] arXiv HTML lookup failed', e);
+    return undefined;
+  }
+}
+
+async function buildArxivPaper(arxivId: string, version: number | undefined, pageMeta?: PageMeta): Promise<Paper> {
+  let meta: Partial<ArxivMeta> | undefined;
+  // the web app can't call the arXiv API (no CORS), so it skips the failing request
+  let fallback = isWebApp();
+  if (!fallback) {
+    try {
+      [meta] = await fetchArxiv([arxivId]);
+    } catch (e) {
+      console.warn('[archive] arXiv API failed, using page metadata', e);
+      // a network or CORS failure, with nothing from the page to go on
+      fallback = !(e instanceof HttpError) && !pageMeta?.title;
+    }
+  }
+  if (fallback) {
+    meta = await arxivMetaFromS2(arxivId);
+    if (!meta?.title || !meta.abstract) {
+      const html = await arxivMetaFromHtml(arxivId, version);
+      if (html) pageMeta = { ...html, ...pageMeta };
+    }
   }
   const title = meta?.title ?? pageMeta?.title ?? arxivId;
   const authors = (meta?.authors ?? pageMeta?.authors ?? []).map(toAuthor);
@@ -179,8 +260,10 @@ export async function savePaper(input: SaveInput): Promise<SaveResult> {
   let paper = await repo.getPaper(paperId);
   if (!paper) {
     if (arxiv) paper = await buildArxivPaper(arxiv.id, arxiv.version, input.pageMeta);
-    else if (orId) paper = await buildOpenReviewPaper(orId, input.pageMeta);
-    else throw new Error(`Can't fetch metadata for ${paperId}`);
+    else if (orId) {
+      if (isWebApp()) throw new Error(OPENREVIEW_IN_WEB_APP);
+      paper = await buildOpenReviewPaper(orId, input.pageMeta);
+    } else throw new Error(`Can't fetch metadata for ${paperId}`);
     // another record may already claim one of our aliases (e.g. the OpenReview version of an arXiv paper)
     paper = await repo.putPaper(paper);
   } else if (input.pageMeta?.firstFigureUrl && !paper.firstFigureUrl) {
