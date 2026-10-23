@@ -1,107 +1,98 @@
-# Marginalia: Chrome Web Store submission kit
+# Archive: Chrome Web Store kit (0.3.0 update)
 
-Fill these in from top to bottom in the developer dashboard. Everything referenced here is in this folder.
+Item ID: `igggcdjhmjbdndkblipknecchjepglco`. Listing: https://chromewebstore.google.com/detail/igggcdjhmjbdndkblipknecchjepglco
 
-## 1. Upload
+## 1. Upload the new version
 
-Dashboard → **New item** → upload `marginalia-0.2.0.zip`.
-
-The item ID appears in the address bar and on the item page. Your unlisted install link will be:
-`https://chromewebstore.google.com/detail/<item-id>`
+Developer dashboard → Archive (it may still say Marginalia) → **Package** → **Upload new package** → `archive-0.3.0-chrome.zip`. The name, icon and description in the zip replace the old ones.
 
 ## 2. Store listing tab
 
 **Description** (paste as is):
 
 ```
-Marginalia is a reading companion for research papers on arXiv and OpenReview.
+Archive is a reading companion for research papers on arXiv and OpenReview. It is free and open source, and keeps your library in your own browser. Not affiliated with arXiv or OpenReview.
 
 SAVE AND CITE
 • Save any arXiv or OpenReview paper in one click (or Alt+Shift+S).
 • Clean BibTeX with consistent citation keys and protected acronyms ({LLM}, {GPT-4}).
-• When a preprint is published, Marginalia finds the venue version on DBLP and updates its BibTeX automatically.
-• Export a .bib file for any project or selection.
+• When a preprint is published, Archive finds the venue version and updates its BibTeX.
+• Cite buttons copy \cite{key} (or \citep, \citet, \autocite, Pandoc [@key]) for one paper or a whole selection.
+• Keep a project's .bib file up to date in Google Drive, with a link Overleaf can pull from.
+• Import from Zotero, Mendeley, EndNote or Paperpile. Export back to Zotero with your highlights and notes.
 
-HIGHLIGHT AND TAKE NOTES
+READ AND HIGHLIGHT
 • Highlight on arXiv HTML pages and in a built-in PDF reader, with labels: Problem, Method, Result, Interesting, Weakness.
-• Add Markdown notes to highlights or to the whole paper.
+• Markdown notes on highlights or on the whole paper.
 • Highlights re-attach when a paper gets a new arXiv version, and carry over between the HTML and PDF versions.
+• Download a PDF, or save it to Google Drive, with your highlights and notes embedded.
 • Hover a citation to see its abstract and save it. Hover a math symbol to see where it is defined.
 
-ORGANIZE YOUR LIBRARY
+A LIBRARY THAT SORTS ITSELF
 • Reading status (Inbox, To read, Reading, Read) that updates as you scroll.
-• Projects: new papers that match a project are filed into it or suggested.
+• Projects: new papers that fit a project are filed into it or suggested.
 • Topics that group your papers automatically.
-• An inbox ranked by relevance, papers that cite your library, and authors you follow.
+• Follow authors, and get a daily For you list of their new papers and new papers that fit your projects.
 • OpenReview scores and decisions, code links, and a searchable table of tasks, benchmarks and models.
 
+ON YOUR PHONE AND IPAD
+• The same library as a free web app for iPhone, iPad and Android, synced through your Google Drive.
+
 LAB MEETINGS
-• Turn your labeled highlights into a lab-meeting factoid (Problem, Method, Results, What interested me, What could be better), with a figure you snip from the PDF, ready to paste into a shared doc.
+• Turn your labeled highlights into a lab-meeting factoid (Problem, Method, Results, What interested me, What could be better), with a figure you snip from the PDF.
 
 OPTIONAL AI FEATURES (your own Claude API key)
-• Explain a passage, find the evidence for a claim, ask questions, compare two papers, extract key fields, summarize reviews and draft factoids.
+• Explain a passage, find the evidence for a claim, ask questions, compare two papers.
+• Ask your whole library: answers cite the exact passages from your papers, highlights and notes.
+• Draft a related-work section for a project, citing only your own citation keys.
 • Off by default. With AI off, nothing is sent to any AI service and every AI control is hidden.
 
 PRIVATE BY DESIGN
-• Your library, highlights and notes stay in your browser. There is no account and no server.
+• No account and no server. Google Drive is optional and Archive can only see the files it creates there.
+• Source code: https://github.com/Manas2006/archive
 ```
 
-**Category:** Education (under Productivity)
+**Category:** Education (or Tools)
 **Language:** English (United States)
-**Store icon:** `store-icon-128.png`
-**Screenshots** (1280x800, upload in this order):
-1. `1-highlights-and-panel.png`
-2. `2-explain.png`
-3. `3-reader.png`
-4. `4-library.png`
-5. `5-factoid.png`
-
-**Small promo tile:** `promo-small-440x280.png`
-**Official URL / Homepage / Support URL:** leave blank (optional)
+**Screenshots:** keep the current five, or replace them later with ones that show For you and the library.
+**Homepage URL:** https://github.com/Manas2006/archive
+**Support URL:** https://github.com/Manas2006/archive/issues
 
 ## 3. Privacy tab
 
-**Single purpose description:**
+**Single purpose description** (unchanged):
 
 ```
 Help researchers save, annotate and organize the academic papers they read on arXiv and OpenReview.
 ```
 
-**Permission justifications:**
+**Permission justifications:** keep the existing ones and add these:
 
 | Permission | Justification |
 | --- | --- |
-| storage | Saves the user's settings and a queue of pending metadata lookups. |
-| unlimitedStorage | The user's library, highlights, notes, captured figures and paper text are stored locally in IndexedDB and can exceed the default quota. |
-| sidePanel | Shows the highlights, notes and BibTeX for the paper in the current tab. |
-| contextMenus | Adds right-click items: save the paper, use an image as the lab-meeting figure, open a PDF link in the built-in reader. |
-| alarms | Runs a daily check for published versions of saved preprints, and retries pending metadata lookups. |
-| notifications | Tells the user when a saved preprint's published version was found and its BibTeX updated. |
-| clipboardWrite | Copies BibTeX entries and the lab-meeting factoid to the clipboard. |
-| Host permissions | arxiv.org: save and highlight papers on abstract and HTML pages, and load PDFs into the reader. export.arxiv.org: paper metadata. openreview.net, api.openreview.net, api2.openreview.net: paper pages, PDFs, metadata and public reviews. api.semanticscholar.org: citations, references, venues and embeddings for sorting. dblp.org: BibTeX of published versions. api.anthropic.com: optional AI features, used only after the user adds their own API key. |
+| identity (optional) | Signs in to Google only when the user clicks "Connect Google Drive" in Settings, to save their PDFs and .bib files to their own Drive and sync their library between their devices. Uses the drive.file scope, so only files Archive creates are visible to it. |
+| Host permissions (add to the existing text) | www.googleapis.com and oauth2.googleapis.com (optional, requested only when the user connects Google Drive): upload the user's own files to their Drive and revoke the sign-in when they disconnect. |
 
 **Remote code:** No, I am not using remote code.
 
-**Data usage:** check these two:
-- **Website content:** the text of papers the user opens is stored locally, and sent to Anthropic only when the user invokes an AI feature with their own key.
-- **Authentication information:** the user's own Claude API key, stored locally and sent only to api.anthropic.com.
+**Data usage:** keep **Website content** and **Authentication information** checked, and add **Personally identifiable information** (the connected Google account's email address, shown in Settings and stored only in the browser). The wording to keep in mind:
+- Website content: the text of papers the user opens is stored locally, and sent to Anthropic only when they use an AI feature with their own key. PDFs and the library go to the user's own Google Drive only if they connect it.
+- Authentication information: the user's own Claude API key and Google sign-in token, stored locally and sent only to api.anthropic.com and Google.
 
-Then check all three certifications (no selling, no unrelated use, no creditworthiness use).
+Keep all three certifications checked.
 
-**Privacy policy URL:** the public link to `privacy-policy.md` (see the chat).
+**Privacy policy URL:** https://manas2006.github.io/archive/privacy.html (live once the web app is published; until then use https://github.com/Manas2006/archive/blob/main/store/privacy-policy.md)
 
 ## 4. Distribution tab
 
-- **Payments:** Free of charge
-- **Visibility:** Unlisted
-- **Regions:** All regions
+Unchanged: free, all regions. Visibility is Public right now; switch to Unlisted if you want it link-only.
 
-## 5. Test instructions (optional, helps the reviewer)
+## 5. Test instructions for the reviewer
 
 ```
-No account or login is needed. Open any paper on arxiv.org (abstract, HTML or PDF page) or openreview.net and click "Save paper" at the bottom right. On an arXiv HTML page (the "HTML (experimental)" link on any recent paper), select text to highlight it. Open the library with Alt+Shift+L. AI features are off by default and need the user's own Claude API key in Settings; everything else works without one.
+No account or login is needed. Open any paper on arxiv.org (abstract, HTML or PDF page) or openreview.net and click "Save paper" at the bottom right. On an arXiv HTML page (the "HTML" link on any recent paper), select text to highlight it. Open the library with Alt+Shift+L. AI features are off by default and need the user's own Claude API key in Settings. Google Drive is optional (Settings, Connect Google Drive) and asks for the identity permission only then. Everything else works without either.
 ```
 
 ## 6. Submit
 
-Click **Submit for review**. Review usually takes a few days. After approval, anyone with the link above can install it.
+Click **Submit for review**. Everyone who has it installed gets the update automatically once it's approved, and keeps their library.
