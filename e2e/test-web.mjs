@@ -48,6 +48,11 @@ function watch(page, label) {
 
 async function addPaper(page, value) {
   const input = page.locator('input[placeholder*="arXiv" i]').first();
+  // phones: the add field sits behind the "Search and add" button
+  if (!(await input.isVisible().catch(() => false))) {
+    const toggle = page.locator('button[aria-label="Search and add"]');
+    if (await toggle.count()) await toggle.first().click();
+  }
   await input.fill(value);
   await input.press('Enter');
 }
@@ -170,7 +175,7 @@ try {
   console.log('\n# iPhone: metadata from the arXiv HTML page when Semantic Scholar is down');
   const phone = await browser.newContext({ ...devices['iPhone 13'], ignoreHTTPSErrors: true });
   const plib = watch(await phone.newPage(), 'phone library');
-  await plib.goto(APP);
+  await plib.goto(`${APP}library.html#view=all`);
   await waitFor(() => plib.evaluate(() => document.getElementById('root')?.childElementCount > 0), { label: 'phone library rendered' });
   state.s2Down = true;
   await addPaper(plib, '2401.00001');
