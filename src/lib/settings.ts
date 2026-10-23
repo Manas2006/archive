@@ -74,6 +74,17 @@ export function updateSettings(patch: Partial<Settings>): Promise<Settings> {
   return run;
 }
 
+/** Back to the defaults, with a new user id. For "Delete all data". */
+export function resetSettings(): Promise<Settings> {
+  const run = writeChain.then(async () => {
+    const s = { ...DEFAULT_SETTINGS, userId: crypto.randomUUID() };
+    await chrome.storage.local.set({ [KEY]: s });
+    return s;
+  });
+  writeChain = run.catch(() => undefined);
+  return run;
+}
+
 export function onSettingsChanged(cb: (s: Settings) => void): () => void {
   const listener = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
     if (area === 'local' && changes[KEY]) cb({ ...DEFAULT_SETTINGS, ...(changes[KEY].newValue ?? {}) });

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Modal, Spinner } from '@/components/common';
 import { Icon } from '@/components/Icon';
 import * as repo from '@/lib/repo';
+import { revokeProjectBibLink } from '@/lib/projectBib';
 import { rpc } from '@/lib/rpc';
 import { parseArxivId, parsePaperUrl } from '@/lib/ids';
 import { mergeTopics } from '@/lib/topics';
@@ -81,6 +82,16 @@ export function ProjectDialog({ open, onClose, project, rows }: { open: boolean;
               className="mg-btn-ghost text-rose-700"
               onClick={async () => {
                 if (confirm(`Delete the project "${project.name}"? Papers stay in your library.`)) {
+                  if (project.driveBib?.publicLink) {
+                    try {
+                      await revokeProjectBibLink(project);
+                    } catch (e) {
+                      const ok = confirm(
+                        `Archive couldn't turn off the public link to this project's .bib file (${(e as Error).message}). Delete the project anyway? The file stays shared until you change its sharing in Google Drive.`,
+                      );
+                      if (!ok) return;
+                    }
+                  }
                   await repo.deleteProject(project.id);
                   onClose();
                   go({ kind: 'status', status: 'inbox' });

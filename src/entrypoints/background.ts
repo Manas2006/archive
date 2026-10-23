@@ -2,7 +2,6 @@ import { defineBackground } from 'wxt/utils/define-background';
 import { handlers, bypassReader } from '@/lib/bg/handlers';
 import { registerBackground } from '@/lib/bg/setup';
 import { drainQueue, enqueueEnrich, setVenueNotifier } from '@/lib/enrich';
-import { runDaily } from '@/lib/daily';
 import { parsePaperUrl, readerUrl } from '@/lib/ids';
 import { getSettings } from '@/lib/settings';
 import { savePaper } from '@/lib/capture';
@@ -10,9 +9,9 @@ import type { TabContext } from '@/lib/types';
 import type { VenueUpgrade } from '@/lib/venue';
 import { getApiKey } from '@/lib/secrets';
 import { openNotesPanel } from '@/platform/panel';
-import { hasHostPermissions, onHostPermissionsChanged } from '@/platform/permissions';
+import { hasHostPermissions, onHostPermissionsChanged, watchAiDataConsent } from '@/platform/permissions';
 import { isFirefox } from '@/lib/platform';
-import { periodicDriveSync, startServices } from '@/lib/bg/services';
+import { dailyAfterSync, periodicDriveSync, startServices } from '@/lib/bg/services';
 import { FEED_NOTIFICATION_ID } from '@/lib/daily';
 
 // Firefox for Android has no context menus, commands or notifications, and only
@@ -100,6 +99,7 @@ export default defineBackground({
     registerBackground({ platform: 'extension' });
     // follow migration, Drive sync, project .bib files in Drive
     startServices();
+    watchAiDataConsent();
 
     if (isFirefox()) {
       void flagHostAccess();
@@ -134,7 +134,7 @@ export default defineBackground({
     });
 
     chrome.alarms.onAlarm.addListener((alarm) => {
-      if (alarm.name === 'mg-daily') void runDaily({ onUpgrade: notifyUpgrade });
+      if (alarm.name === 'mg-daily') void dailyAfterSync({ onUpgrade: notifyUpgrade }).catch(() => {});
       if (alarm.name === 'mg-queue') void drainQueue();
       if (alarm.name === 'mg-sync') void periodicDriveSync().catch(() => {});
     });

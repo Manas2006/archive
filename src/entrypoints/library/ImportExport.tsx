@@ -7,6 +7,9 @@ import { bibFile, download } from '@/lib/exports';
 import type { ImportedRef } from '@/lib/zotero';
 import type { Project } from '@/lib/types';
 
+/** Imports bigger than this are looked up without AI, so a whole Zotero library doesn't run up the user's API bill. */
+const AI_IMPORT_LIMIT = 10;
+
 export function ImportExportDialog({ open, onClose, projects }: { open: boolean; onClose: () => void; projects: Project[] }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [refs, setRefs] = useState<ImportedRef[] | null>(null);
@@ -48,8 +51,11 @@ export function ImportExportDialog({ open, onClose, projects }: { open: boolean;
     try {
       const { importRefs } = await import('@/lib/zotero');
       const res = await importRefs(refs, { projectId: projectId || undefined });
-      if (res.paperIds.length) await rpc.enqueueEnrich(res.paperIds);
-      setMsg(`Imported ${res.added} new paper${res.added === 1 ? '' : 's'}${res.updated ? `, updated ${res.updated}` : ''}${res.skipped ? `, skipped ${res.skipped} without a title` : ''}. Archive is looking them up on Semantic Scholar now.`);
+      // a big import is looked up without Claude calls, so it doesn't run up the API bill
+      const big = res.paperIds.length > AI_IMPORT_LIMIT;
+      if (res.paperIds.length) await rpc.enqueueEnrich(res.paperIds, { ai: !big });
+      const aiNote = big && (await rpc.aiAvailable().catch(() => false)) ? ' AI field extraction is skipped for imports this big, to keep your Claude API costs down.' : '';
+      setMsg(`Imported ${res.added} new paper${res.added === 1 ? '' : 's'}${res.updated ? `, updated ${res.updated}` : ''}${res.skipped ? `, skipped ${res.skipped} without a title` : ''}. Archive is looking them up on Semantic Scholar now.${aiNote}`);
       setRefs(null);
     } catch (e) {
       setErr((e as Error).message);

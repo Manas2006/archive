@@ -95,6 +95,13 @@ export function syncNow(): Promise<SyncReport> {
   return queued;
 }
 
+/** Move Archive's sync file(s) to the Drive trash and forget this device's sync state. */
+export async function deleteRemoteLibrary(): Promise<void> {
+  const files = await findByAppProperty(SYNC_PROP.key, SYNC_PROP.value);
+  for (const f of files) await trashFile(f.id);
+  await db().kv.delete(KV.sync);
+}
+
 /** When this device last finished a sync, if ever. */
 export async function lastSyncedAt(): Promise<string | null> {
   return (await readState()).lastSyncAt ?? null;

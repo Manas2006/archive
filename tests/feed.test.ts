@@ -121,6 +121,22 @@ describe('legacy follows', () => {
     expect(await repo.listFollows()).toHaveLength(2);
   });
 
+  it('keeps names in any script apart', async () => {
+    await updateSettings({ followedAuthors: ['张三', '李四', 'Łukasz Kaiser', 'José Hernández-Orallo'] });
+    expect(await migrateLegacyFollows()).toBe(4);
+    expect((await repo.listFollows()).map((f) => f.id).sort()).toEqual(['name:jose hernandez orallo', 'name:łukasz kaiser', 'name:张三', 'name:李四']);
+  });
+
+  it('keeps names it could not migrate for the next start', async () => {
+    const spy = vi.spyOn(repo, 'follow').mockRejectedValueOnce(new Error('disk full'));
+    await updateSettings({ followedAuthors: ['Grace Hopper', 'Ada Lovelace'] });
+    expect(await migrateLegacyFollows()).toBe(1);
+    expect((await getSettings()).followedAuthors).toEqual(['Grace Hopper']);
+    spy.mockRestore();
+    expect(await migrateLegacyFollows()).toBe(1);
+    expect((await getSettings()).followedAuthors).toEqual([]);
+  });
+
   it('does not duplicate an author who is already followed', async () => {
     await repo.follow({ name: 'Grace Hopper', s2AuthorId: 'A1' });
     await updateSettings({ followedAuthors: ['Grace Hopper'] });

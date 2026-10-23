@@ -358,6 +358,38 @@ export function genericBibtex(p: GenericBibInput): string {
   });
 }
 
+/**
+ * Fields a reference manager adds for its own use: private notes, local file paths,
+ * read flags, ratings. They must never reach a .bib that may be shared publicly.
+ */
+const PRIVATE_FIELDS = new Set([
+  'annote', 'annotation', 'annotations', 'comment', 'comments', 'notes', 'review', 'abstract', 'keywords',
+  'file', 'files', 'pdf', 'local-url', 'owner', 'groups', 'readstatus', 'read', 'ranking', 'rating', 'priority',
+  'relevance', 'qualityassured', 'printed', 'timestamp', 'creationdate', 'modificationdate', 'library', 'citeulike-article-id',
+  'citeulike-linkout-0', 'posted-at', 'mendeley-tags', 'mendeley-groups', 'interhash', 'intrahash', 'biburl', 'bibsource',
+]);
+const PRIVATE_PREFIX = /^(bdsk-|date-|mendeley-|zotero-|x-|jabref-|citavi-|endnote-)/;
+const isPrivateField = (k: string) => PRIVATE_FIELDS.has(k) || PRIVATE_PREFIX.test(k);
+const MONTH_MACRO = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)$/i;
+
+/** True when the entry carries any field from a reference manager's private set. */
+export function hasPrivateBibFields(src: string): boolean {
+  return parseBib(src).some((e) => e.fields.some(([k]) => isPrivateField(k)));
+}
+
+/**
+ * An imported entry with the private fields removed and the given key. Everything else
+ * (title braces, field order, odd fields) is kept as the user had it.
+ */
+export function cleanImportedBib(src: string, citeKey: string): string | null {
+  const [entry] = parseBib(src);
+  if (!entry) return null;
+  const fields = entry.fields.filter(([k, v]) => !isPrivateField(k) && v.trim() !== '');
+  const width = Math.max(...fields.map(([k]) => k.length), 0);
+  const lines = fields.map(([k, v]) => `  ${k.padEnd(width)} = ${k === 'month' && MONTH_MACRO.test(v) ? v.toLowerCase() : `{${v}}`},`);
+  return `@${entry.type}{${citeKey},\n${lines.join('\n')}\n}`;
+}
+
 /** Replace the key of an existing entry string. */
 export function rekey(bib: string, key: string): string {
   return bib.replace(/^(\s*@\w+\s*[{(])\s*[^,]*,/, `$1${key},`);

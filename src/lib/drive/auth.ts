@@ -125,18 +125,32 @@ export function reconnectDrive(): Promise<DriveAccount> {
 }
 
 /**
- * Web app: load Google's sign-in script ahead of time, so the Connect and Reconnect
- * buttons can open the popup synchronously. Call it when Settings (or any page with
- * a Reconnect button) mounts. No-op in the extension.
+ * Web app, when Drive is connected: load Google's sign-in script ahead of time, so the
+ * Reconnect button can open the popup synchronously. Call it when Settings (or any
+ * page with a Reconnect button) mounts. Google's script is not loaded for people who
+ * never connect Drive. No-op in the extension.
  */
 export function prepareDriveAuth(): Promise<void> {
   if (!driveConfigured()) return Promise.resolve();
-  const warm = readAuth().then(
-    () => undefined,
+  return readAuth().then(
+    (a) => (a && isWebApp() ? loadGis().catch(() => undefined) : undefined),
     () => undefined,
   );
-  if (!isWebApp()) return warm;
-  return Promise.all([warm, loadGis().catch(() => undefined)]).then(() => undefined);
+}
+
+/** Web app: start loading Google's sign-in script, e.g. when the pointer reaches the Connect button. */
+export function warmDriveSignIn(): void {
+  if (driveConfigured() && isWebApp() && !tokenProvider) void loadGis().catch(() => undefined);
+}
+
+/** False in the web app until Google's sign-in script is loaded (a tap then can't open the popup yet). */
+export function driveSignInReady(): boolean {
+  return !isWebApp() || !!tokenProvider || !!gis;
+}
+
+/** Web app: load Google's sign-in script now. Resolves when Connect can open the popup. */
+export function loadDriveSignIn(): Promise<void> {
+  return isWebApp() && !tokenProvider ? loadGis() : Promise.resolve();
 }
 
 /**

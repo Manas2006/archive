@@ -4,7 +4,7 @@ import { Icon } from '@/components/Icon';
 import { useLive } from '@/hooks/useLive';
 import * as repo from '@/lib/repo';
 import { download } from '@/lib/exports';
-import { projectBibText } from '@/lib/projectBib';
+import { projectBibText, revokeProjectBibLink } from '@/lib/projectBib';
 import { openSettings } from '@/lib/nav';
 import type { Project } from '@/lib/types';
 import { slug } from './shared';
@@ -21,7 +21,8 @@ export function OverleafDialog({ open, onClose, project }: { open: boolean; onCl
     try {
       const { pushProjectBib } = await import('@/lib/projectBib');
       if (!enabled) {
-        if (bib?.fileId && bib.publicLink) await (await import('@/lib/drive/api')).removePublicLink(bib.fileId).catch(() => undefined);
+        // if the link can't be taken down, say so and leave everything on so the user can retry
+        await revokeProjectBibLink(project);
         await repo.updateProject(project.id, (cur) => ({ driveBib: { ...(cur.driveBib ?? {}), enabled: false, publicLink: undefined } }));
       } else {
         await repo.updateProject(project.id, (cur) => ({ driveBib: { ...(cur.driveBib ?? {}), enabled: true } }));
@@ -66,8 +67,19 @@ export function OverleafDialog({ open, onClose, project }: { open: boolean; onCl
                 disabled={busy}
                 onChange={(v) => update(true, v)}
                 label="Make a link Overleaf can read"
-                description="Anyone with the link can read this .bib file. It only contains bibliography entries, not your notes or highlights."
+                description="Anyone with the link can read this .bib file. It only contains bibliography entries: notes, highlights, abstracts and file paths from imports are left out."
               />
+            )}
+            {bib?.enabled && bib.error && !busy && (
+              <p className="rounded-md bg-amber-50 px-3 py-2 text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                The last update to Drive failed: {bib.error}{' '}
+                <button className="underline" onClick={() => update(true, !!bib.publicLink)}>
+                  Try again
+                </button>
+              </p>
+            )}
+            {bib?.enabled && account && bib.account && bib.account !== account.email && (
+              <p className="text-xs text-stone-500">This file was in {bib.account}'s Drive. The next update puts it in {account.email}'s Drive, without a public link until you turn it on.</p>
             )}
             {busy && (
               <div className="flex items-center gap-2 text-stone-500">

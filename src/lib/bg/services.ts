@@ -16,6 +16,8 @@ import { driveConfigured } from '../drive/config';
 import { scheduleProjectBibs } from '../projectBib';
 import { fetchPdfBytes } from '../pdfBytes';
 import { nowIso } from '../ids';
+import { runDaily, type DailyReport } from '../daily';
+import type { VenueUpgrade } from '../venue';
 
 let started = false;
 
@@ -35,6 +37,15 @@ export async function periodicDriveSync() {
   if (!driveConfigured()) return;
   if (!(await getSettings()).driveSync || !(await getDriveAccount())) return;
   await syncNow();
+}
+
+/**
+ * The daily check, after pulling from Drive: it then works on the latest library, and
+ * doesn't look again for feed items another device already found today.
+ */
+export async function dailyAfterSync(opts: { force?: boolean; onUpgrade?: (u: VenueUpgrade) => void } = {}): Promise<DailyReport | null> {
+  await periodicDriveSync().catch((e) => console.warn('[archive] sync before the daily check', e));
+  return runDaily(opts);
 }
 
 /** Folder in Drive for a paper: its first project, else "Unsorted". */

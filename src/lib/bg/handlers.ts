@@ -154,7 +154,7 @@ export const handlers = {
   },
 
   async openOriginal(ctx: RpcCtx, url: string) {
-    if (ctx.tabId === undefined) return false;
+    if (ctx.tabId === undefined || !/^https?:\/\//i.test(url)) return false;
     bypassReader.add(ctx.tabId);
     await chrome.tabs.update(ctx.tabId, { url });
     return true;
@@ -201,8 +201,8 @@ export const handlers = {
   },
 
   /** Papers added by an import: look them up in the background. */
-  async enqueueEnrich(_ctx: RpcCtx, paperIds: string[]) {
-    for (const id of paperIds) await enqueueEnrich(id);
+  async enqueueEnrich(_ctx: RpcCtx, paperIds: string[], opts: { ai?: boolean } = {}) {
+    await enqueueEnrich(paperIds, opts);
     return true;
   },
 

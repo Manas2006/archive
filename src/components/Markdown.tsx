@@ -49,7 +49,15 @@ const SANITIZE = {
   ALLOWED_URI_REGEXP: /^https?:\/\//i,
 };
 
+/** Classes the app's own markup uses. Others could restyle the page (a full-screen overlay from Tailwind's utility classes). */
+const SAFE_CLASS = /^(mg-cite|katex[\w-]*|language-[\w-]+)$/;
+
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.hasAttribute?.('class')) {
+    const keep = (node.getAttribute('class') ?? '').split(/\s+/).filter((c) => SAFE_CLASS.test(c));
+    if (keep.length) node.setAttribute('class', keep.join(' '));
+    else node.removeAttribute('class');
+  }
   if (node.tagName === 'A') {
     node.setAttribute('target', '_blank');
     node.setAttribute('rel', 'noopener noreferrer');

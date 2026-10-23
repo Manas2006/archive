@@ -22,7 +22,10 @@ const MAX_ATTEMPTS = 3;
 interface QueueItem {
   id: string;
   attempts: number;
+  /** Look it up without any Claude calls (papers from a big import). */
+  noAi?: boolean;
 }
+
 let draining = false;
 // All queue reads and writes go through one chain so concurrent saves can't drop items.
 let queueChain: Promise<unknown> = Promise.resolve();
@@ -38,14 +41,20 @@ function withQueue<T>(fn: (q: QueueItem[]) => Promise<[QueueItem[], T]> | [Queue
   return run;
 }
 
-export async function enqueueEnrich(paperId: string) {
-  await withQueue((q) => [q.some((x) => x.id === paperId) ? q : [...q, { id: paperId, attempts: 0 }], null]);
+export async function enqueueEnrich(paperId: string | string[], opts: { ai?: boolean } = {}) {
+  const ids = Array.isArray(paperId) ? paperId : [paperId];
+  await withQueue((q) => {
+    const have = new Set(q.map((x) => x.id));
+    const add = [...new Set(ids)].filter((id) => !have.has(id)).map((id): QueueItem => ({ id, attempts: 0, ...(opts.ai === false ? { noAi: true } : {}) }));
+    return [add.length ? [...q, ...add] : q, null];
+  });
   void drainQueue();
 }
 
 export async function drainQueue() {
   if (draining) return;
   draining = true;
+  let done = 0;
   try {
     for (;;) {
       // claim the next item and count the attempt up front, so a paper whose enrichment
@@ -58,12 +67,15 @@ export async function drainQueue() {
       });
       if (!item) break;
       try {
-        await enrichPaper(item.id);
+        // priorities depend on the whole library: work them out once at the end
+        await enrichPaper(item.id, { ai: !item.noAi, priorities: false });
+        done++;
       } catch (e) {
         console.warn('[archive] enrich failed for', item.id, e);
       }
       await withQueue((q) => [q.filter((x) => x.id !== item.id), null]);
     }
+    if (done) await updatePriorities().catch((e) => console.warn('[archive] priority failed', e));
   } finally {
     draining = false;
   }
@@ -140,7 +152,7 @@ export async function enrichS2(paper: Paper, opts: { references?: boolean; embed
   return { paper: p, s2 };
 }
 
-export async function updateRelevance(paperId: string): Promise<void> {
+export async function updateRelevance(paperId: string, opts: { ai?: boolean } = {}): Promise<void> {
   const s = await getSettings();
   const paper = await repo.getPaper(paperId);
   const entry = await repo.getEntry(paperId);
@@ -151,7 +163,7 @@ export async function updateRelevance(paperId: string): Promise<void> {
   let scores = projects.length
     ? heuristicScores({ paper, projects, papers, entries, corpus: new Corpus([...papers.values()].map(paperDoc)) })
     : [];
-  if (projects.length && aiAvailable(s)) {
+  if (projects.length && opts.ai !== false && aiAvailable(s)) {
     try {
       const seedTitles = new Map(
         projects.map((pr) => [pr.id, [...pr.seedPaperIds, ...entries.filter((e) => e.projectIds.includes(pr.id)).map((e) => e.paperId)].map((id) => papers.get(id)?.title ?? '').filter(Boolean)] as const),
@@ -193,10 +205,11 @@ export async function updatePriorities(): Promise<void> {
   }
 }
 
-export async function enrichPaper(paperId: string): Promise<void> {
+export async function enrichPaper(paperId: string, opts: { ai?: boolean; priorities?: boolean } = {}): Promise<void> {
   let paper = await repo.getPaper(paperId);
   if (!paper) return;
   const s = await getSettings();
+  const useAi = opts.ai !== false && aiAvailable(s);
 
   // 1. OpenReview scores and decision
   if (paper.openreviewId && !paper.review && !isWebApp()) {
@@ -218,7 +231,7 @@ export async function enrichPaper(paperId: string): Promise<void> {
   }
 
   // 4. AI: field extraction and review summary
-  if (aiAvailable(s)) {
+  if (useAi) {
     if (!paper.extracted) {
       try {
         paper = (await repo.updatePaper(paper.id, { extracted: await extractFields(paper) }, { derived: true })) ?? paper;
@@ -237,9 +250,9 @@ export async function enrichPaper(paperId: string): Promise<void> {
   }
 
   // 5. Sorting
-  await updateRelevance(paper.id).catch((e) => console.warn('[archive] relevance failed', e));
+  await updateRelevance(paper.id, { ai: useAi }).catch((e) => console.warn('[archive] relevance failed', e));
   await assignTopic(paper.id).catch((e) => console.warn('[archive] topic failed', e));
-  await updatePriorities().catch((e) => console.warn('[archive] priority failed', e));
+  if (opts.priorities !== false) await updatePriorities().catch((e) => console.warn('[archive] priority failed', e));
 }
 
 /**

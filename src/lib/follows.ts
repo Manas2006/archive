@@ -17,14 +17,21 @@ export async function migrateLegacyFollows(): Promise<number> {
   }
   const have = new Set((await repo.listFollows()).map((f) => repo.normAuthorName(f.name)));
   let added = 0;
+  // names that failed stay in settings, so the next start tries them again
+  const left: string[] = [];
   for (const name of names) {
     const n = repo.normAuthorName(name);
     if (!n || have.has(n)) continue;
-    await repo.follow({ name });
-    have.add(n);
-    added++;
+    try {
+      await repo.follow({ name });
+      have.add(n);
+      added++;
+    } catch (e) {
+      console.warn('[archive] could not migrate follow', name, e);
+      left.push(name);
+    }
   }
-  await updateSettings({ followedAuthors: [] });
+  await updateSettings({ followedAuthors: left });
   return added;
 }
 

@@ -6,14 +6,17 @@
 import './chromeShim';
 import { registerBackground } from '@/lib/bg/setup';
 import { drainQueue, setVenueNotifier } from '@/lib/enrich';
-import { lastDailyReport, runDaily } from '@/lib/daily';
+import { lastDailyReport } from '@/lib/daily';
 import { parseArxivId, parsePaperUrl } from '@/lib/ids';
 import { rpc } from '@/lib/rpc';
 import type { VenueUpgrade } from '@/lib/venue';
 import { FEED_NOTIFICATION_ID } from '@/lib/daily';
-import { startServices } from '@/lib/bg/services';
+import { dailyAfterSync, startServices } from '@/lib/bg/services';
 
 const DAILY_EVERY_MS = 20 * 60 * 60 * 1000;
+/** A run that started this recently is still going in another tab, or was cut off when the phone closed the app. */
+const DAILY_RETRY_MS = 2 * 60 * 60 * 1000;
+const DAILY_STARTED_KEY = 'dailyStartedAt';
 const BASE = import.meta.env.BASE_URL || '/';
 
 registerBackground({ platform: 'web' });
@@ -50,7 +53,10 @@ async function exclusive(name: string, fn: () => Promise<unknown>): Promise<void
 async function dailyIfDue() {
   const last = await lastDailyReport().catch(() => null);
   if (last && Date.now() - Date.parse(last.ranAt) < DAILY_EVERY_MS) return;
-  await runDaily({ onUpgrade: notifyUpgrade });
+  const started = (await chrome.storage.local.get(DAILY_STARTED_KEY))[DAILY_STARTED_KEY] as string | undefined;
+  if (started && Date.now() - Date.parse(started) < DAILY_RETRY_MS) return;
+  await chrome.storage.local.set({ [DAILY_STARTED_KEY]: new Date().toISOString() });
+  await dailyAfterSync({ onUpgrade: notifyUpgrade });
 }
 
 function catchUp() {
@@ -97,6 +103,12 @@ function sharedPaper(): { url?: string; paperId?: string } | null {
 const shared = /\/(index|library)\.html$|\/$/.test(location.pathname) ? sharedPaper() : null;
 if (shared) {
   history.replaceState(null, '', location.pathname + location.hash);
+  // any site can link here with ?url=, so ask before saving (and maybe uploading to Drive)
+  const what = shared.url ?? shared.paperId!.replace(/^arxiv:/, 'arXiv ');
+  if (confirm(`Add this paper to your Archive library?\n\n${what}`)) addShared(shared);
+}
+
+function addShared(shared: { url?: string; paperId?: string }) {
   rpc
     .savePaper(shared)
     .then((r) => {

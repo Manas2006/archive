@@ -2,7 +2,8 @@ import 'fake-indexeddb/auto'; // must load before Dexie
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { arxivBibtex, toAuthor } from '@/lib/bibtex';
+import { arxivBibtex, cleanImportedBib, hasPrivateBibFields, toAuthor } from '@/lib/bibtex';
+import { projectBibText } from '@/lib/projectBib';
 import { ArchiveDB, db, setDb } from '@/lib/db';
 import { arxivUrls } from '@/lib/ids';
 import * as repo from '@/lib/repo';
@@ -488,5 +489,48 @@ describe('importRefs', () => {
     expect(bert.bibtex.startsWith('@article{DBLP:journals/corr/abs-1810-04805,')).toBe(true);
     const he = (await repo.getPaper('doi:10.1109/cvpr.2016.90'))!;
     expect(he).toMatchObject({ citeKey: 'he2016deep', venue: 'CVPR 2016' });
+  });
+});
+
+describe('private BibTeX fields', () => {
+  beforeEach(() => setDb(new ArchiveDB(`zotero-private-${Math.random()}`)));
+  afterEach(async () => {
+    await db().delete();
+  });
+
+  it('cleanImportedBib drops notes, files and ratings and keeps the rest as written', () => {
+    const src = `@article{old,
+  title = {The {LLM} Book},
+  author = {Doe, Jane},
+  month = jan,
+  file = {/Users/me/Papers/doe.pdf:pdf},
+  annote = {my private thoughts},
+  mendeley-groups = {Thesis},
+  date-added = {2024-01-01},
+  bdsk-file-1 = {YnBsaXN0},
+  journal = {Nature},
+}`;
+    const out = cleanImportedBib(src, 'doe2024llm')!;
+    expect(out.startsWith('@article{doe2024llm,')).toBe(true);
+    expect(out).toContain('{The {LLM} Book}');
+    expect(out).toContain('= jan,');
+    expect(out).toContain('{Nature}');
+    for (const f of ['file', 'annote', 'mendeley-groups', 'date-added', 'bdsk-file-1', 'private', '/Users/me']) expect(out).not.toContain(f);
+    expect(hasPrivateBibFields(out)).toBe(false);
+    expect(hasPrivateBibFields(src)).toBe(true);
+  });
+
+  it("imported BibTeX keeps the note as a note, not in the paper's BibTeX or the project .bib", async () => {
+    const project = await repo.createProject({ name: 'Reasoning' });
+    await importRefs(parseBibtexRefs(BIB), { projectId: project.id });
+    const cot = (await repo.getPaper('arxiv:2201.11903'))!;
+    expect(cot.bibtex).not.toMatch(/annote|keywords|self-consistency/);
+    expect((await repo.listAnnotations(cot.id)).some((a) => /self-consistency/.test(JSON.stringify(a.body)))).toBe(true);
+
+    // an older entry that still carries one is cleaned on the way out
+    await repo.updatePaper(cot.id, { bibtex: cot.bibtex.replace(/\n\}$/, ',\n  annote = {secret}\n}') });
+    const bib = await projectBibText(project.id);
+    expect(bib).toContain(`{${cot.citeKey},`);
+    expect(bib).not.toMatch(/annote|secret/);
   });
 });

@@ -129,7 +129,8 @@ export interface Project extends SyncMeta {
   seedPaperIds: string[];
   color: string;
   /** Keep this project's .bib file up to date in Google Drive (for Overleaf). */
-  driveBib?: { enabled: boolean; fileId?: string; publicLink?: string; hash?: string; updatedAt?: string };
+  /** The project's .bib in Google Drive. `account` is the Drive it lives in; `error` is the last failed upload. */
+  driveBib?: { enabled: boolean; fileId?: string; publicLink?: string; hash?: string; updatedAt?: string; account?: string; error?: string };
 }
 
 export interface Topic extends SyncMeta {

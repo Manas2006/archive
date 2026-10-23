@@ -6,6 +6,7 @@
 // CORS. The web app has no permissions at all, so everything here is a no-op there.
 
 import { isFirefox, isWebApp } from '@/lib/platform';
+import { getSettings, updateSettings } from '@/lib/settings';
 
 /** Data that leaves the browser when AI features are on (declared optional in the Firefox manifest). */
 export const AI_DATA_COLLECTION = ['websiteContent', 'authenticationInfo'] as const;
@@ -102,5 +103,24 @@ export function requestAiDataConsent(): Promise<boolean> {
     );
   } catch (e) {
     return Promise.resolve(/data_collection|Unexpected property|Type error/i.test(String((e as Error)?.message ?? e)));
+  }
+}
+
+/**
+ * Firefox: turn AI features off when the data-collection consent is withdrawn
+ * (about:addons > Permissions), so no page text goes to Anthropic without it.
+ * Checks once now and again whenever a permission is removed. Background only.
+ */
+export function watchAiDataConsent(): void {
+  if (isWebApp() || !isFirefox()) return;
+  const check = async () => {
+    const s = await getSettings();
+    if (s.aiEnabled && !(await hasAiDataConsent())) await updateSettings({ aiEnabled: false });
+  };
+  void check().catch(() => undefined);
+  try {
+    browserPermissions()?.onRemoved?.addListener(() => void check().catch(() => undefined));
+  } catch {
+    /* no permissions events */
   }
 }

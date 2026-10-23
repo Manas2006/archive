@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@/assets/tailwind.css';
 import { useSettings } from '@/hooks/useSettings';
-import { Spinner, Toggle, cx } from '@/components/common';
+import { Modal, Spinner, Toggle, cx } from '@/components/common';
 import { Icon, Logo } from '@/components/Icon';
 import { updateSettings } from '@/lib/settings';
 import { getApiKey, setApiKey } from '@/lib/secrets';
@@ -16,8 +16,10 @@ import { ensureHostPermissions, hasAiDataConsent, hasHostPermissions, onHostPerm
 import { pageUrl } from '@/lib/nav';
 import { useLive } from '@/hooks/useLive';
 import { driveConfigured } from '@/lib/drive/config';
-import { connectDrive, disconnectDrive, getDriveAccount, prepareDriveAuth, reconnectDrive } from '@/lib/drive/auth';
+import { connectDrive, disconnectDrive, driveSignInReady, getDriveAccount, loadDriveSignIn, prepareDriveAuth, reconnectDrive, warmDriveSignIn } from '@/lib/drive/auth';
 import { syncNow, type SyncReport } from '@/lib/drive/sync';
+import { revokeAllBibLinks } from '@/lib/projectBib';
+import { deleteAllData } from '@/lib/wipe';
 
 function Section({ id, title, description, children }: { id?: string; title: string; description?: ReactNode; children: ReactNode }) {
   return (
@@ -248,12 +250,14 @@ function DriveSection() {
   const { data: account, reload } = useLive(() => getDriveAccount(), [], (e) => e.table === 'drive');
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
   const [sync, setSync] = useState<SyncReport | null>(null);
   const configured = driveConfigured();
   useEffect(() => {
-    // the web app has to open Google's sign-in popup synchronously on a tap, so load it early
+    // the web app has to open Google's sign-in popup synchronously on a tap, so once
+    // connected, load it early for Reconnect (Connect loads it when the pointer gets there)
     if (configured && isWebApp()) void prepareDriveAuth().catch(() => undefined);
-  }, [configured]);
+  }, [configured, !!account]);
   return (
     <Section
       id="drive"
@@ -267,9 +271,22 @@ function DriveSection() {
           <button
             className="mg-btn-primary self-start"
             disabled={!!busy}
+            onPointerEnter={warmDriveSignIn}
+            onPointerDown={warmDriveSignIn}
+            onFocus={warmDriveSignIn}
             onClick={() => {
-              setBusy('connect');
               setErr(null);
+              setHint(null);
+              if (!driveSignInReady()) {
+                // Safari only opens the popup during the tap itself, so get it ready and ask for one more tap
+                setBusy('connect');
+                loadDriveSignIn()
+                  .then(() => setHint('Google sign-in is ready. Tap Connect Google Drive again.'))
+                  .catch((e) => setErr((e as Error).message))
+                  .finally(() => setBusy(null));
+                return;
+              }
+              setBusy('connect');
               connectDrive()
                 .then(() => reload())
                 .catch((e) => setErr((e as Error).message))
@@ -288,12 +305,29 @@ function DriveSection() {
             </span>
             <button
               className="mg-btn-ghost text-xs text-stone-500"
+              title="Also turns off the public .bib links you made for Overleaf"
+              disabled={busy === 'disconnect'}
               onClick={async () => {
-                await disconnectDrive();
-                reload();
+                setBusy('disconnect');
+                setErr(null);
+                try {
+                  const { revoked, failed } = await revokeAllBibLinks();
+                  if (failed.length) {
+                    const names = failed.map((f) => `"${f.project.name}"`).join(', ');
+                    if (!confirm(`Archive couldn't turn off the public link to the .bib file of ${names} (${failed[0].error}). Disconnect anyway? The file stays shared until you change its sharing in Google Drive.`)) return;
+                  } else if (revoked) {
+                    await syncNow(); // so your other devices see the links are off
+                  }
+                  await disconnectDrive();
+                  reload();
+                } catch (e) {
+                  setErr((e as Error).message);
+                } finally {
+                  setBusy(null);
+                }
               }}
             >
-              Disconnect
+              {busy === 'disconnect' ? <Spinner /> : null} Disconnect
             </button>
           </div>
           {account.needsReconnect && (
@@ -340,6 +374,7 @@ function DriveSection() {
           <p className="text-xs text-stone-500">For Overleaf: open a project in the library and click Overleaf to keep its .bib file in Drive with a link Overleaf can read.</p>
         </>
       )}
+      {hint && !err && <p className="text-sm text-stone-600 dark:text-stone-300">{hint}</p>}
       {err && <p className="text-sm text-rose-700">{err}</p>}
     </Section>
   );
@@ -380,6 +415,7 @@ function ForYouSection() {
 function DataSection() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [wipeOpen, setWipeOpen] = useState(false);
   return (
     <Section id="data" title="Your data" description="Everything is stored in this browser. Back it up, move it to another browser, or export your annotations in the W3C Web Annotation format.">
       <div className="flex flex-wrap gap-2">
@@ -422,19 +458,77 @@ function DataSection() {
       </div>
       {msg && <p className="text-sm text-stone-600">{msg}</p>}
       <div className="border-t border-stone-200 pt-4 dark:border-stone-800">
-        <button
-          className="mg-btn text-rose-700"
-          onClick={async () => {
-            if (confirm('Delete every saved paper, highlight, note and project from this browser? This cannot be undone.')) {
-              await repo.clearAll();
-              setMsg('All data deleted.');
-            }
-          }}
-        >
+        <button className="mg-btn text-rose-700" onClick={() => setWipeOpen(true)}>
           <Icon name="trash" size={14} /> Delete all data
         </button>
       </div>
+      <DeleteAllDialog open={wipeOpen} onClose={() => setWipeOpen(false)} />
     </Section>
+  );
+}
+
+function DeleteAllDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { data: account } = useLive(() => getDriveAccount(), [open], (e) => e.table === 'drive');
+  const [driveCopy, setDriveCopy] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [warnings, setWarnings] = useState<string[] | null>(null);
+  const finish = () => location.reload();
+  return (
+    <Modal open={open} onClose={warnings ? finish : onClose} title="Delete all data">
+      {warnings ? (
+        <div className="flex flex-col gap-3 text-sm">
+          <p>Everything in this browser is deleted, and Google Drive is disconnected.</p>
+          <ul className="list-disc pl-5 text-amber-800 dark:text-amber-200">
+            {warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+          <div className="flex justify-end">
+            <button className="mg-btn-primary" onClick={finish}>
+              Done
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3 text-sm">
+          <p>
+            This deletes every paper, highlight, note, project and follow in this browser, your Claude API key, your Ask history and your settings
+            {account ? ', turns off the public .bib links you made for Overleaf, and disconnects Google Drive' : ''}. It cannot be undone, so export a backup first if you might want it back.
+          </p>
+          {account && (
+            <Toggle
+              checked={driveCopy}
+              onChange={setDriveCopy}
+              label="Also delete the synced library in Google Drive"
+              description={`Moves Archive/.sync in ${account.email}'s Drive to the trash. Without this, connecting Drive again brings your library back. PDFs and .bib files you saved in Drive stay there either way. Other devices that are still connected keep their copy.`}
+            />
+          )}
+          <div className="flex justify-end gap-2">
+            <button className="mg-btn" onClick={onClose} disabled={busy}>
+              Cancel
+            </button>
+            <button
+              className="mg-btn-primary bg-rose-700 hover:bg-rose-800"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  const { warnings } = await deleteAllData({ driveCopy });
+                  if (warnings.length) setWarnings(warnings);
+                  else finish();
+                } catch (e) {
+                  setWarnings([(e as Error).message]);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? <Spinner /> : <Icon name="trash" size={14} />} Delete everything
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 

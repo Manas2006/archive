@@ -327,8 +327,9 @@ export const normAuthorName = (s: string) =>
   s
     .toLowerCase()
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z ]/g, ' ')
+    .replace(/\p{M}/gu, '')
+    // letters of any script (Chinese, Cyrillic, Greek, ...), not only a-z
+    .replace(/[^\p{L}\p{N} ]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -555,8 +556,9 @@ export async function importAll(data: Awaited<ReturnType<typeof exportAll>>): Pr
   return n;
 }
 
+/** Empty every table, including kv (the Claude key, Ask history, Drive sign-in and sync state). */
 export async function clearAll(): Promise<void> {
   const d = db();
-  await Promise.all(d.tables.filter((t) => t.name !== 'kv').map((t) => t.clear()));
+  await Promise.all(d.tables.map((t) => t.clear()));
   emitChange({ table: '*', keys: [], paperIds: [] });
 }

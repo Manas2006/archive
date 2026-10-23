@@ -18,6 +18,9 @@ import {
 import { DriveApiError, __setBackoffForTests, downloadFile, ensureFolderPath, findByAppProperty, findFiles, uploadFile } from '@/lib/drive/api';
 import { propValue, sanitizeName, savePaperPdf, saveProjectBib } from '@/lib/drive/files';
 import { startAutoSync, syncNow } from '@/lib/drive/sync';
+import { pushProjectBib, revokeAllBibLinks } from '@/lib/projectBib';
+import { deleteAllData } from '@/lib/wipe';
+import { getApiKey, setApiKey } from '@/lib/secrets';
 
 // ---------------------------------------------------------------------------
 // chrome.storage stub (settings live there; repo reads the user id from it)
@@ -1005,5 +1008,66 @@ describe('sync and background work', () => {
     expect(after?.updatedAt).toBe(before?.updatedAt);
     expect(after?.priority).toBe(0.5);
     expect((await db().changes.toCollection().last())?.seq).toBe(seq);
+  });
+});
+
+describe('public .bib links', () => {
+  const linked = (id: string) => (drive.files.get(id)?.perms ?? []).some((p: any) => p.type === 'anyone');
+
+  it('are taken down before Drive is disconnected, and the change syncs', async () => {
+    await connectDrive();
+    const project = await repo.createProject({ name: 'Thesis' });
+    const p1 = (await pushProjectBib(project, { force: true, publicLink: true }))!;
+    expect(p1.driveBib).toMatchObject({ enabled: true, account: 'ada@example.com' });
+    expect(linked(p1.driveBib!.fileId!)).toBe(true);
+
+    const { revoked, failed } = await revokeAllBibLinks();
+    expect({ revoked, failed }).toEqual({ revoked: 1, failed: [] });
+    expect(linked(p1.driveBib!.fileId!)).toBe(false);
+    expect((await repo.getProject(project.id))?.driveBib?.publicLink).toBeUndefined();
+    // a user change, so it goes to the other devices
+    expect((await db().changes.toArray()).some((c) => c.table === 'projects' && c.key === project.id)).toBe(true);
+  });
+
+  it('are not re-shared from a different Google account', async () => {
+    await connectDrive();
+    const project = await repo.createProject({ name: 'Survey' });
+    await repo.updateProject(project.id, { driveBib: { enabled: true, publicLink: 'https://old', account: 'someone@else.com', hash: 'x' } });
+    const p = (await pushProjectBib((await repo.getProject(project.id))!))!;
+    expect(p.driveBib).toMatchObject({ enabled: true, account: 'ada@example.com', publicLink: undefined });
+    expect(linked(p.driveBib!.fileId!)).toBe(false);
+  });
+});
+
+describe('delete all data', () => {
+  it('takes down links, signs out of Drive and clears the key and Ask history', async () => {
+    await connectDrive();
+    await setApiKey('sk-ant-test');
+    await db().kv.put({ key: 'ask.history', value: [{ q: 'secret question' }] });
+    await repo.putPaper(paperFixture('arxiv:2403.00009'));
+    await repo.ensureEntry('arxiv:2403.00009');
+    const project = await repo.createProject({ name: 'Lab' });
+    const p = (await pushProjectBib(project, { force: true, publicLink: true }))!;
+    await syncNow();
+    expect(syncFileJson()).not.toBeNull();
+
+    const { warnings } = await deleteAllData({ driveCopy: true });
+    expect(warnings).toEqual([]);
+    expect((drive.files.get(p.driveBib!.fileId!)?.perms ?? []).length).toBe(0);
+    expect(syncFileJson()).toBeNull(); // trashed
+    expect(await getDriveAccount()).toBeNull();
+    expect(await getApiKey()).toBeFalsy();
+    expect(await db().kv.count()).toBe(0);
+    expect(await repo.listPapers()).toEqual([]);
+    expect(await repo.listProjects()).toEqual([]);
+  });
+
+  it('keeps the synced copy unless asked', async () => {
+    await connectDrive();
+    await repo.putPaper(paperFixture('arxiv:2403.00010'));
+    await syncNow();
+    await deleteAllData();
+    expect(syncFileJson()).not.toBeNull();
+    expect(await getDriveAccount()).toBeNull();
   });
 });

@@ -4,7 +4,7 @@
 // toCslJson write papers back out in the shapes Zotero reads best.
 
 import { quoteOf } from './anchoring/text';
-import { arxivBibtex, asciiFold, baseCiteKey, genericBibtex, getField, parseBib, rekey, splitName, toAuthor, uniqueCiteKey, type BibEntry } from './bibtex';
+import { arxivBibtex, asciiFold, baseCiteKey, cleanImportedBib, genericBibtex, getField, parseBib, rekey, splitName, toAuthor, uniqueCiteKey, type BibEntry } from './bibtex';
 import { labelOf, noteOf, paperLink } from './exports';
 import { arxivUrls, normalizeDoi, openreviewUrls, parseArxivId, parsePaperUrl } from './ids';
 import * as repo from './repo';
@@ -736,7 +736,8 @@ async function buildImportedPaper(ref: ImportedRef, ids: RefIdentity, taken: Set
   let bibtex: string;
   let bibtexSource: Paper['bibtexSource'];
   if (ref.bibtex?.trim()) {
-    bibtex = rekey(ref.bibtex.trim(), citeKey);
+    // annote, file, abstract and the like stay out: this BibTeX can end up in a public .bib
+    bibtex = cleanImportedBib(ref.bibtex, citeKey) ?? rekey(ref.bibtex.trim(), citeKey);
     bibtexSource = 'import';
   } else if (ids.arxivId) {
     // the venue check during enrichment upgrades this to the venue's BibTeX once it's published

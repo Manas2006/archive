@@ -34,7 +34,9 @@ style.textContent = `${HIGHLIGHT_CSS}
 document.head.append(style);
 
 const params = new URLSearchParams(location.search);
-const SRC = params.get('src') ?? '';
+// only web addresses: the reader opens and links to this, so javascript:, data: or file: URLs are ignored
+const RAW_SRC = params.get('src') ?? '';
+const SRC = /^https?:\/\//i.test(RAW_SRC) ? RAW_SRC : '';
 const parsed = parsePaperUrl(SRC);
 const PAPER_ID = params.get('paper') ?? parsed?.paperId ?? null;
 const VERSION = parsed?.arxiv?.version;
