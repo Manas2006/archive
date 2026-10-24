@@ -81,7 +81,7 @@ Help researchers save, annotate and organize the academic papers they read on ar
 
 Keep all three certifications checked.
 
-**Privacy policy URL:** https://manas2006.github.io/archive/privacy.html (live once the web app is published; until then use https://github.com/Manas2006/archive/blob/main/store/privacy-policy.md)
+**Privacy policy URL:** https://manas2006.github.io/archive/privacy.html
 
 ## 4. Distribution tab
 
